@@ -35,11 +35,9 @@ PHASE1_OUTPUT_DIR = os.path.join(
 os.makedirs(PHASE1_OUTPUT_DIR, exist_ok=True)
 
 
-# ════════════════════════════════════════════════════════════
 # LOAD DATASET
 # Tahap ini kita me-load dataset yang akan dipakai dan kita
 # kerjakan atau kita "data mine" dari datanya.
-# ════════════════════════════════════════════════════════════
 
 def load_data(path):
     data_set = pd.read_csv(path)
@@ -47,14 +45,12 @@ def load_data(path):
     return data_set
 
 
-# ════════════════════════════════════════════════════════════
 # EXPLORATORY DATA ANALYSIS
 # Tahapan ini bertujuan untuk memahami struktur data, distribusi
 # variabel utama, pola kategori, hubungan antar fitur numerik,
 # serta indikasi awal anomali. Hasil EDA ini akan menjadi dasar
 # untuk keputusan feature engineering, binning, dan feature
 # selection pada tahap selanjutnya.
-# ════════════════════════════════════════════════════════════
 
 def run_eda(data_set, save_plots=True):
     print("\n-- Head --"); print(data_set.head())
@@ -150,9 +146,7 @@ def run_eda(data_set, save_plots=True):
     print("\n-- Anomaly Ratio --"); print(data_set['Anomaly'].value_counts())
 
 
-# ════════════════════════════════════════════════════════════
 # DATA VALIDATION
-# ════════════════════════════════════════════════════════════
 
 def validate_data(data_set):
     data_set = data_set.copy()
@@ -210,12 +204,10 @@ def validate_data(data_set):
     return data_set
 
 
-# ════════════════════════════════════════════════════════════
 # FEATURE ENGINEERING
 # Pada tahap ini kita akan melakukan modifikasi terhadap fitur
 # yang ada, seperti merubah, membuat yang baru, atau
 # mengeliminasi yang tidak diperlukan.
-# ════════════════════════════════════════════════════════════
 
 def engineer_features(data_set):
     data_set = data_set.copy()
@@ -266,7 +258,6 @@ def engineer_features(data_set):
     return data_set, date_cols
 
 
-# ════════════════════════════════════════════════════════════
 # EARLY FEATURE SELECTION (DROP KOLOM)
 # Pada tahap ini, dipilih fitur yang akan dipakai pada fase
 # selanjutnya. Dikatakan "early" karena sudah pasti tidak
@@ -280,7 +271,6 @@ def engineer_features(data_set):
 #   Branch ID DIPERTAHANKAN karena merepresentasikan lokasi cabang.
 # - Date Data: sudah diekstrak ke Account_Age_Years dan
 #   Days_Since_Last_Transaction. Menyimpan keduanya = redundan.
-# ════════════════════════════════════════════════════════════
 
 def drop_irrelevant_columns(data_set, date_cols):
     cols_to_drop = [c for c in [
@@ -295,13 +285,11 @@ def drop_irrelevant_columns(data_set, date_cols):
     return data_clean
 
 
-# ════════════════════════════════════════════════════════════
 # BINNING
 # Pada tahap ini kita mengubah data kontinu ke data kategorikal
 # yang diperlukan pada fase-fase selanjutnya (terutama ARM/Apriori).
 # Menggunakan quantile-based binning (qcut) agar setiap bin memiliki
 # jumlah data yang relatif seimbang.
-# ════════════════════════════════════════════════════════════
 
 def _safe_qcut(series, labels):
     ranked = series.rank(method='first')
@@ -343,14 +331,12 @@ def bin_features(data_clean):
     return data_clean
 
 
-# ════════════════════════════════════════════════════════════
 # ENCODING DATA
 # Pada tahap ini mengubah input data menjadi input numerik.
 # Kita memilih Label Encoding dan One-Hot Encoding karena ada
 # data yang memiliki lebih dari dua kategori. One-Hot Encoding
 # digunakan untuk menghindari bias pada model yang menganggap
 # 2 > 1 (asumsi ordinalitas yang tidak tepat).
-# ════════════════════════════════════════════════════════════
 
 def encode_features(data_clean):
     data_clean = data_clean.copy()
@@ -370,13 +356,11 @@ def encode_features(data_clean):
     return data_encoded
 
 
-# ════════════════════════════════════════════════════════════
 # SCALING AND NORMALIZING
 # Pada tahap ini kita melakukan scaling dan normalisasi terhadap
 # data numerikal. Kita memilih MinMaxScaler agar data berada pada
 # range [0,1] untuk menghindari bias — berbeda dengan StandardScaler
 # yang tidak menjamin batas atas/bawah tertentu.
-# ════════════════════════════════════════════════════════════
 
 def normalize_features(data_encoded):
     data_encoded = data_encoded.copy()
@@ -397,13 +381,11 @@ def normalize_features(data_encoded):
     return data_encoded
 
 
-# ════════════════════════════════════════════════════════════
 # FINAL FEATURE SELECTION
 # Pada tahap ini kita mulai memilih fitur-fitur yang akan dipakai
 # oleh model kita menggunakan dua metode:
 # 1. Correlation Matrix — deteksi multikolinearitas
 # 2. Mutual Information — ukur informativeness berbasis entropi
-# ════════════════════════════════════════════════════════════
 
 def feature_selection(data_encoded, save_plots=True):
     corr_cols = [c for c in [
@@ -455,7 +437,6 @@ def feature_selection(data_encoded, save_plots=True):
     print(mi_df.to_string(index=False))
 
 
-# ════════════════════════════════════════════════════════════
 # SELECTING FEATURES & SAVE DATASETS
 # Fitur dipilih berdasarkan kemampuannya menggambarkan finance
 # profile dan behaviour nasabah.
@@ -465,7 +446,6 @@ def feature_selection(data_encoded, save_plots=True):
 # - Credit Limit: sudah tercermin dalam CC_Utilization
 # - Credit Card Balance: sudah tercermin dalam CC_Utilization
 # - Minimum Payment Due: korelasi sempurna dengan CC Balance
-# ════════════════════════════════════════════════════════════
 
 def save_datasets(data_encoded, data_clean):
     # Dataset untuk Clustering (Phase 2)
@@ -516,9 +496,7 @@ def save_datasets(data_encoded, data_clean):
     print(f"ARM dataset: {data_clean[arm_cols].shape}")
 
 
-# ════════════════════════════════════════════════════════════
 # MAIN PIPELINE
-# ════════════════════════════════════════════════════════════
 
 def run_preprocessing(raw_path=RAW_PATH):
     print("=" * 55)
