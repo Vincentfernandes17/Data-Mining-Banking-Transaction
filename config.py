@@ -7,17 +7,11 @@ Kalau mau ganti path, parameter, atau kolom — cukup edit file ini.
 import os
 
 # ── Path ────────────────────────────────────────────────────
-<<<<<<< HEAD
-BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
-DATA_DIR    = os.path.join(BASE_DIR, 'data')
-OUTPUT_DIR  = os.path.join(BASE_DIR, 'outputs')
-=======
 # BASE_DIR = folder tempat config.py ini berada (root project)
 BASE_DIR    = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR    = os.path.join(BASE_DIR, 'data')
 OUTPUT_DIR  = os.path.join(BASE_DIR, 'outputs')
 SRC_DIR     = os.path.join(BASE_DIR, 'src')
->>>>>>> a300db8a33ff98bb5e23be4d9afa31a4700dc7d7
 
 RAW_DATA_PATH        = os.path.join(DATA_DIR, 'Comprehensive_Banking_Database.csv')
 CLUSTERING_DATA_PATH = os.path.join(DATA_DIR, 'dataset_clustering.csv')
@@ -71,15 +65,9 @@ ARM_COLS = [
 ]
 
 # ── Parameter Clustering ────────────────────────────────────
-<<<<<<< HEAD
-K_RANGE     = range(2, 11)
-BEST_K      = 3       # override dari domain knowledge
-N_INIT      = 10
-=======
 K_RANGE      = range(2, 11)
 BEST_K       = 3
 N_INIT       = 10
->>>>>>> a300db8a33ff98bb5e23be4d9afa31a4700dc7d7
 RANDOM_STATE = 42
 
 # ── Parameter DBSCAN ────────────────────────────────────────
