@@ -1,16 +1,4 @@
 """
-<<<<<<< HEAD
-src/clustering.py
-Phase 2 — Segmentation via Clustering
-
-Isi fungsi untuk:
-- Menentukan K optimal (Elbow + Silhouette)
-- K-Means + visualisasi PCA & t-SNE
-- DBSCAN + k-distance graph
-- Hierarchical + dendrogram
-- Profiling cluster
-- Perbandingan ketiga metode
-=======
 clustering.py — Phase 2: Segmentation via Clustering
 
 Pada tahapan ini, kita mau menemukan kelompok-kelompok data yang
@@ -23,7 +11,6 @@ Cara running:
 Atau import dari notebook:
     from src.clustering import run_clustering
     df_clustered = run_clustering('data/dataset_clustering.csv')
->>>>>>> a300db8a33ff98bb5e23be4d9afa31a4700dc7d7
 """
 
 import os
