@@ -76,6 +76,7 @@ def run_eda(data_set, save_plots=True):
         'Credit Card Balance','Minimum Payment Due','Rewards Points'
     ] if c in data_set.columns]
 
+    # Histogram
     fig, axes = plt.subplots(len(num_features), 1, figsize=(10, 4*len(num_features)))
     if len(num_features) == 1: axes = [axes]
     for ax, col in zip(axes, num_features):
@@ -84,6 +85,21 @@ def run_eda(data_set, save_plots=True):
         ax.set_xlabel(col); ax.set_ylabel("Count")
     plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'eda_numerical_dist.png'), dpi=150)
+    plt.show()
+
+    # Box Plot
+    fig, axes = plt.subplots(len(num_features), 1, figsize=(10, 4 * len(num_features)))
+    if len(num_features) == 1:
+        axes = [axes]
+
+    for ax, col in zip(axes, num_features):
+        sns.boxplot(x=data_set[col], ax=ax)
+        ax.set_title(f"Distribution of {col}")
+        ax.set_xlabel(col)
+        ax.set_ylabel("Count")
+
+    plt.tight_layout()
+    if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'eda_numerical_boxplot.png'), dpi=150)
     plt.show()
 
     # Visualizing Categorical Feature Distribution
@@ -216,7 +232,6 @@ def validate_data(data_set):
 # Pada tahap ini kita akan melakukan modifikasi terhadap fitur
 # yang ada, seperti merubah, membuat yang baru, atau
 # mengeliminasi yang tidak diperlukan.
-
 def engineer_features(data_set):
     data_set = data_set.copy()
 
