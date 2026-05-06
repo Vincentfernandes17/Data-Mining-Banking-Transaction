@@ -4,6 +4,8 @@ main.py — Entry Point Pipeline Data Mining Banking
 Cara pakai di VSCode terminal:
     python main.py --phase 1    # Phase 1: Preprocessing
     python main.py --phase 2    # Phase 2: Clustering
+    python main.py --phase 3    # Phase 2: ARM
+    python main.py --phase 4    # Phase 2: Anomaly
     python main.py --phase all  # Semua phase berurutan
 """
 
