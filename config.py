@@ -66,7 +66,7 @@ ARM_COLS = [
 
 # Parameter Clustering 
 K_RANGE      = range(2, 11)
-BEST_K       = 3
+# BEST_K       = 
 N_INIT       = 10
 RANDOM_STATE = 42
 

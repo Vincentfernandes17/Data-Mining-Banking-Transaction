@@ -18,7 +18,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from sklearn.preprocessing import MinMaxScaler, LabelEncoder
+from sklearn.preprocessing import MinMaxScaler, LabelEncoder, RobustScaler
 from sklearn.feature_selection import mutual_info_classif
 
 DATA_DIR   = 'data'
@@ -272,6 +272,89 @@ def engineer_features(data_set):
 
     return data_set, date_cols
 
+# OUTLIER DETECTION (Pre-Scaling)
+# Dilakukan sebelum scaling untuk menginformasikan keputusan
+# transformasi. Berbeda dengan Phase 4 yang bertujuan knowledge
+# discovery, outlier detection di sini bertujuan memastikan
+# proses scaling tidak terdistorsi oleh nilai ekstrem.
+#
+# Keputusan yang diambil:
+# - Outlier TIDAK dihapus karena bisa jadi sinyal anomali
+#   yang akan diinvestigasi di Phase 4
+# - Outlier digunakan untuk menentukan scaler yang tepat:
+#   RobustScaler untuk fitur dengan outlier ekstrem,
+#   MinMaxScaler untuk fitur yang distribusinya normal
+
+def detect_outliers_prescaling(data_clean, save_plots=True):
+    numeric_cols = [c for c in [
+        'Account Balance', 'Transaction Amount', 'Loan Amount',
+        'Credit Card Balance', 'Rewards Points',
+        'CC_Utilization', 'Transaction_to_Balance_Ratio',
+        'Age', 'Interest Rate', 'Loan Term', 'Account_Age_Years',
+        'Days_Since_Last_Transaction'
+    ] if c in data_clean.columns]
+
+    print("=== Outlier Detection (IQR Method) ===")
+    outlier_summary = []
+
+    for col in numeric_cols:
+        Q1  = data_clean[col].quantile(0.25)
+        Q3  = data_clean[col].quantile(0.75)
+        IQR = Q3 - Q1
+        lower = Q1 - 1.5 * IQR
+        upper = Q3 + 1.5 * IQR
+
+        n_outliers = ((data_clean[col] < lower) | (data_clean[col] > upper)).sum()
+        pct        = n_outliers / len(data_clean) * 100
+        skewness   = data_clean[col].skew()
+
+        # Tentukan rekomendasi scaler berdasarkan outlier + skewness
+        if pct > 5 or abs(skewness) > 1:
+            recommendation = 'RobustScaler'
+        else:
+            recommendation = 'MinMaxScaler'
+
+        outlier_summary.append({
+            'Feature'       : col,
+            'Skewness'      : round(skewness, 3),
+            'N_Outliers'    : n_outliers,
+            'Pct_Outliers'  : round(pct, 1),
+            'Lower_Bound'   : round(lower, 2),
+            'Upper_Bound'   : round(upper, 2),
+            'Scaler'        : recommendation
+        })
+
+    summary_df = pd.DataFrame(outlier_summary).sort_values('Pct_Outliers', ascending=False)
+    print(summary_df.to_string(index=False))
+
+    # Visualisasi boxplot per fitur
+    fig, axes = plt.subplots(len(numeric_cols), 1, figsize=(10, 3*len(numeric_cols)))
+    if len(numeric_cols) == 1: axes = [axes]
+
+    for ax, col in zip(axes, numeric_cols):
+        rec = summary_df[summary_df['Feature'] == col]['Scaler'].values[0]
+        color = '#e74c3c' if rec == 'RobustScaler' else '#2ecc71'
+        sns.boxplot(x=data_clean[col], ax=ax, color=color)
+        ax.set_title(f"{col}  |  Skew={data_clean[col].skew():.2f}  →  {rec}",
+                     fontsize=10)
+
+    plt.suptitle('Pre-Scaling Outlier Detection\n(Merah = RobustScaler, Hijau = MinMaxScaler)',
+                 fontsize=12, fontweight='bold', y=1.01)
+    plt.tight_layout()
+    if save_plots:
+        plt.savefig(os.path.join(PHASE1_OUTPUT_DIR, 'prescaling_outlier_detection.png'),
+                    dpi=150, bbox_inches='tight')
+    plt.show()
+
+    # Pisahkan fitur berdasarkan rekomendasi scaler
+    robust_cols = summary_df[summary_df['Scaler'] == 'RobustScaler']['Feature'].tolist()
+    minmax_cols = summary_df[summary_df['Scaler'] == 'MinMaxScaler']['Feature'].tolist()
+
+    print(f"\nRekomendasi scaler:")
+    print(f"  RobustScaler ({len(robust_cols)}) : {robust_cols}")
+    print(f"  MinMaxScaler ({len(minmax_cols)}) : {minmax_cols}")
+
+    return robust_cols, minmax_cols
 
 # EARLY FEATURE SELECTION (DROP KOLOM)
 # Pada tahap ini, dipilih fitur yang akan dipakai pada fase
@@ -377,22 +460,32 @@ def encode_features(data_clean):
 # range [0,1] untuk menghindari bias — berbeda dengan StandardScaler
 # yang tidak menjamin batas atas/bawah tertentu.
 
-def normalize_features(data_encoded):
-    data_encoded = data_encoded.copy()
-    numeric_cols = [c for c in [
-        'Age','Account Balance','Transaction Amount',
-        'Account Balance After Transaction','Loan Amount',
-        'Interest Rate','Loan Term','Credit Limit',
-        'Credit Card Balance','Minimum Payment Due',
-        'Rewards Points','Account_Age_Years',
-        'Days_Since_Last_Transaction','CC_Utilization',
-        'Transaction_to_Balance_Ratio'
-    ] if c in data_encoded.columns]
+# SCALING AND NORMALIZING
+# Scaler dipilih per fitur berdasarkan hasil outlier detection:
+# - RobustScaler → fitur dengan outlier ekstrem atau skewed (|skew|>1)
+#   menggunakan median dan IQR sehingga tidak terpengaruh outlier
+# - MinMaxScaler → fitur dengan distribusi normal dan bounded
+#   menghasilkan range [0,1] yang seragam
 
-    scaler = MinMaxScaler()
-    data_encoded[numeric_cols] = scaler.fit_transform(data_encoded[numeric_cols])
-    print("Normalisasi selesai!")
-    print(data_encoded[numeric_cols].describe().round(3))
+def normalize_features(data_encoded, robust_cols, minmax_cols):
+    data_encoded = data_encoded.copy()
+
+    # Filter hanya kolom yang ada di data_encoded
+    robust_cols = [c for c in robust_cols if c in data_encoded.columns]
+    minmax_cols = [c for c in minmax_cols if c in data_encoded.columns]
+
+    if robust_cols:
+        robust_scaler = RobustScaler()
+        data_encoded[robust_cols] = robust_scaler.fit_transform(data_encoded[robust_cols])
+
+    if minmax_cols:
+        minmax_scaler = MinMaxScaler()
+        data_encoded[minmax_cols] = minmax_scaler.fit_transform(data_encoded[minmax_cols])
+
+    print("=== Normalisasi Selesai ===")
+    print(f"  RobustScaler  ({len(robust_cols)}) : {robust_cols}")
+    print(f"  MinMaxScaler  ({len(minmax_cols)}) : {minmax_cols}")
+
     return data_encoded
 
 
@@ -518,14 +611,15 @@ def run_preprocessing(raw_path=RAW_PATH):
     print("  PHASE 1 - Data Understanding & Preprocessing")
     print("=" * 55)
 
-    data_set = load_data(raw_path)
+    data_set                    = load_data(raw_path)
     run_eda(data_set)
-    data_set = validate_data(data_set)
-    data_set, date_cols = engineer_features(data_set)
-    data_clean = drop_irrelevant_columns(data_set, date_cols)
-    data_clean = bin_features(data_clean)
-    data_encoded = encode_features(data_clean)
-    data_encoded = normalize_features(data_encoded)
+    data_set                    = validate_data(data_set)
+    data_set, date_cols         = engineer_features(data_set)
+    data_clean                  = drop_irrelevant_columns(data_set, date_cols)
+    data_clean                  = bin_features(data_clean)
+    robust_cols, minmax_cols    = detect_outliers_prescaling(data_clean)  # ← baru
+    data_encoded                = encode_features(data_clean)
+    data_encoded                = normalize_features(data_encoded, robust_cols, minmax_cols)  # ← updated
     feature_selection(data_encoded)
     save_datasets(data_encoded, data_clean)
 

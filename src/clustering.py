@@ -33,7 +33,7 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 # Parameter
 RANDOM_STATE = 42
 N_INIT       = 10     # n_init=10 cukup, tidak perlu 100
-BEST_K       = 3      # override domain knowledge (lihat penjelasan di find_optimal_k)
+# BEST_K       = 3      # override domain knowledge (lihat penjelasan di find_optimal_k)
 K_RANGE      = range(2, 11)
 DBSCAN_EPS         = 0.5
 DBSCAN_MIN_SAMPLES = 5
@@ -107,6 +107,7 @@ def find_optimal_k(X, k_range=K_RANGE, save_plots=True):
     plt.show()
 
     math_best = list(k_range)[sil_scores.index(max(sil_scores))]
+    BEST_K = math_best
     print(f"\nK terbaik secara matematis : {math_best}")
     print(f"K yang dipilih untuk analisis : {BEST_K}")
     # Pada dataset ini, dapat dilihat bahwa K=2 adalah yang paling optimal
