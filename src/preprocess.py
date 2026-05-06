@@ -1,11 +1,4 @@
 """
-<<<<<<< HEAD
-src/preprocess.py
-Phase 1 — Data Understanding & Preprocessing Pipeline
-
-Semua fungsi preprocessing ada di sini.
-Dipanggil dari main.py atau langsung dari notebook.
-=======
 preprocess.py — Phase 1: Data Understanding & Preprocessing
 
 Tahap ini kita melakukan import berbagai libraries yang diperlukan
@@ -18,7 +11,6 @@ Cara running:
 Atau import fungsinya dari notebook:
     from src.preprocess import run_preprocessing
     df_encoded, df_clean = run_preprocessing('data/Comprehensive_Banking_Database.csv')
->>>>>>> a300db8a33ff98bb5e23be4d9afa31a4700dc7d7
 """
 
 import os

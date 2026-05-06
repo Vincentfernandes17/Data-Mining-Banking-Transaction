@@ -64,12 +64,12 @@ ARM_COLS = [
     'Feedback Type', 'Resolution Status'
 ]
 
-# ── Parameter Clustering ────────────────────────────────────
+# Parameter Clustering 
 K_RANGE      = range(2, 11)
 BEST_K       = 3
 N_INIT       = 10
 RANDOM_STATE = 42
 
-# ── Parameter DBSCAN ────────────────────────────────────────
+#  Parameter DBSCAN 
 DBSCAN_EPS         = 0.5
 DBSCAN_MIN_SAMPLES = 5
