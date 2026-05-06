@@ -441,14 +441,13 @@ def encode_features(data_clean):
     le = LabelEncoder()
 
     # Label encoding untuk variabel biner/ordinal
-    data_clean['Loan_Status_Encoded']       = le.fit_transform(data_clean['Loan Status'])
     data_clean['Account_Type_Encoded']      = le.fit_transform(data_clean['Account Type'])
     data_clean['Resolution_Status_Encoded'] = le.fit_transform(data_clean['Resolution Status'])
     print("Loan Status classes:", le.classes_)
 
     # One-Hot Encoding untuk variabel nominal tanpa urutan
-    nominal_cols = ['Gender','Account Type','Transaction Type',
-                    'Loan Type','Card Type','Feedback Type','Resolution Status']
+    nominal_cols = ['Loan Status', 'Gender', 'Transaction Type',
+                'Loan Type', 'Card Type', 'Feedback Type']
     data_encoded = pd.get_dummies(data_clean, columns=nominal_cols, drop_first=False)
     print(f"Shape setelah encoding: {data_encoded.shape}")
     return data_encoded
