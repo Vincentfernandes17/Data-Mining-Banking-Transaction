@@ -35,6 +35,18 @@ MIN_SUPPORT    = 0.05   # minimum 5% dari total transaksi
 MIN_CONFIDENCE = 0.5    # minimum 50% confidence
 MIN_LIFT       = 1.2    # hanya ambil rules yang non-trivial
 
+# MIN_SUPPORT = 0.05
+# Dipilih karena rule harus muncul cukup sering agar stabil dan meaningful.
+# Dengan dataset ini, 5% berarti rule muncul pada sekitar 250 baris jika total 5,000 record.
+
+# MIN_CONFIDENCE = 0.5
+# Rule harus benar pada minimal separuh kasus antecedent → consequent.
+
+# MIN_LIFT = 1.2
+# Lift > 1 berarti hubungan non-trivial; 1.2 berarti setidaknya 20% lebih kuat dari random.
+
+# Jika jumlah rule terlalu sedikit, threshold support dapat diturunkan secara bertahap, 
+# tetapi tetap harus dijaga agar rule tidak menjadi terlalu lemah atau tidak meaningful.
 
 # ════════════════════════════════════════════════════════════
 # LOAD DATA
@@ -216,7 +228,7 @@ def auto_tune_support(df_encoded, target_rules=10,
     Iterasi min_support dari start_support turun ke 0.01
     hingga didapat minimal target_rules rules.
     """
-    support_values = np.arange(start_support, 0.009, -0.005).round(3)
+    support_values = np.arange(start_support, 0.009, -0.0025).round(3)
 
     for sup in support_values:
         print(f"\nMencoba min_support = {sup}...")
@@ -351,6 +363,98 @@ def export_rules(rules, top_n=20):
 
     return top_rules
 
+# ════════════════════════════════════════════════════════════
+# BUSINESS MEANING LAYER
+# Menerjemahkan item Apriori dari format "Kolom=Nilai"
+# ke bahasa bisnis agar interpretasi rule lebih kuat.
+# ════════════════════════════════════════════════════════════
+
+ITEM_MEANING_MAP = {
+    'Age_Group=Young': 'nasabah usia muda',
+    'Age_Group=Adult': 'nasabah dewasa',
+    'Age_Group=Middle-aged': 'nasabah paruh baya',
+    'Age_Group=Senior': 'nasabah senior',
+
+    'Balance_Bucket=Low': 'saldo rendah',
+    'Balance_Bucket=Lower-Mid': 'saldo menengah bawah',
+    'Balance_Bucket=Upper-Mid': 'saldo menengah atas',
+    'Balance_Bucket=High': 'saldo tinggi',
+
+    'Transaction_Size=Small': 'transaksi kecil',
+    'Transaction_Size=Medium': 'transaksi menengah',
+    'Transaction_Size=Large': 'transaksi besar',
+    'Transaction_Size=Very Large': 'transaksi sangat besar',
+
+    'Loan_Size=Small': 'pinjaman kecil',
+    'Loan_Size=Medium': 'pinjaman menengah',
+    'Loan_Size=Large': 'pinjaman besar',
+    'Loan_Size=Very Large': 'pinjaman sangat besar',
+
+    'Rate_Category=Low': 'bunga rendah',
+    'Rate_Category=Moderate': 'bunga moderat',
+    'Rate_Category=High': 'bunga tinggi',
+
+    'CC_Utilization_Category=Excellent': 'utilisasi kartu sangat rendah',
+    'CC_Utilization_Category=Good': 'utilisasi kartu rendah',
+    'CC_Utilization_Category=Moderate': 'utilisasi kartu sedang',
+    'CC_Utilization_Category=High': 'utilisasi kartu tinggi',
+    'CC_Utilization_Category=Very High': 'utilisasi kartu sangat tinggi',
+    'CC_Utilization_Category=Over_Limit': 'pemakaian kartu melebihi limit',
+
+    'Loan_Status=Approved': 'pengajuan disetujui',
+    'Loan_Status=Rejected': 'pengajuan ditolak',
+
+    'Resolution_Status=Resolved': 'keluhan terselesaikan',
+    'Resolution_Status=Pending': 'keluhan masih tertunda',
+
+    'Feedback Type=Complaint': 'feedback berupa komplain',
+    'Feedback Type=Suggestion': 'feedback berupa saran',
+    'Feedback Type=Inquiry': 'feedback berupa pertanyaan'
+}
+
+def pretty_item(item):
+    if item in ITEM_MEANING_MAP:
+        return ITEM_MEANING_MAP[item]
+    if '=' in item:
+        key, val = item.split('=', 1)
+        return f"{key.replace('_', ' ')} = {val.replace('_', ' ')}"
+    return item.replace('_', ' ')
+
+def pretty_itemset(itemset):
+    return ', '.join(pretty_item(i) for i in sorted(itemset))
+
+def infer_business_theme(items):
+    items = set(items)
+
+    risk_items = {
+        'CC_Utilization_Category=High',
+        'CC_Utilization_Category=Very High',
+        'CC_Utilization_Category=Over_Limit',
+        'Rate_Category=High',
+        'Transaction_Size=Very Large',
+        'Loan_Status=Rejected'
+    }
+
+    service_items = {
+        'Feedback Type=Complaint',
+        'Resolution_Status=Pending'
+    }
+
+    value_items = {
+        'Balance_Bucket=High',
+        'Loan_Status=Approved',
+        'CC_Utilization_Category=Low',
+        'CC_Utilization_Category=Good',
+        'CC_Utilization_Category=Excellent'
+    }
+
+    if items & risk_items:
+        return 'Profil risiko / tekanan kredit'
+    if items & service_items:
+        return 'Pola layanan / keluhan nasabah'
+    if items & value_items:
+        return 'Profil nasabah bernilai tinggi / sehat'
+    return 'Pola co-occurrence umum'
 
 # ════════════════════════════════════════════════════════════
 # BUSINESS INTERPRETATION TEMPLATE
@@ -364,21 +468,32 @@ def print_business_interpretation(rules, top_n=10):
     print("="*60)
 
     for i, (_, row) in enumerate(rules.head(top_n).iterrows(), 1):
+        antecedents = row['antecedents']
+        consequents = row['consequents']
+
+        antecedent_text = pretty_itemset(antecedents)
+        consequent_text = pretty_itemset(consequents)
+        theme = infer_business_theme(antecedents.union(consequents))
+
         print(f"\n{'─'*60}")
         print(f"Rule #{i}")
-        print(f"  IF   : {row['antecedents_str']}")
-        print(f"  THEN : {row['consequents_str']}")
-        print(f"  Support    : {row['support']:.4f} "
-              f"({row['support']*100:.1f}% transaksi)")
-        print(f"  Confidence : {row['confidence']:.4f} "
-              f"({row['confidence']*100:.1f}% akurasi)")
-        print(f"  Lift       : {row['lift']:.4f} "
-              f"({'↑' if row['lift'] > 1 else '↓'} "
-              f"{abs(row['lift']-1)*100:.1f}% lebih "
-              f"{'likely' if row['lift'] > 1 else 'unlikely'} dari random)")
-        print(f"  Interpretasi bisnis:")
-        print(f"  → [TULIS INTERPRETASI DI SINI]")
+        print(f"  Tema       : {theme}")
+        print(f"  IF   : {antecedent_text}")
+        print(f"  THEN : {consequent_text}")
+        print(f"  Support    : {row['support']:.4f} ({row['support']*100:.1f}% transaksi)")
+        print(f"  Confidence : {row['confidence']:.4f} ({row['confidence']*100:.1f}% kasus IF→THEN)")
+        print(f"  Lift       : {row['lift']:.4f}")
 
+        if row['lift'] > 1:
+            lift_msg = "lebih sering muncul daripada yang diharapkan secara acak"
+        elif row['lift'] == 1:
+            lift_msg = "setara dengan kejadian acak"
+        else:
+            lift_msg = "lebih jarang muncul daripada yang diharapkan secara acak"
+
+        print(f"  Makna lift : hubungan ini {lift_msg}.")
+        print(f"  Interpretasi bisnis:")
+        print(f"  → Nasabah dengan {antecedent_text} cenderung memiliki {consequent_text}.")
 
 # ════════════════════════════════════════════════════════════
 # MAIN PIPELINE
@@ -439,6 +554,7 @@ def run_arm(path=None):
     print("\n[6/6] Export rules & interpretasi bisnis...")
     export_rules(rules, top_n=20)
     print_business_interpretation(rules, top_n=10)
+    print(f"  → Pola ini mendukung segmentasi/targeting karena muncul cukup sering dan tidak trivial.")
 
     print("\n" + "=" * 55)
     print("  PHASE 3 SELESAI")
