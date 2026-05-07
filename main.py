@@ -16,7 +16,7 @@ import sys
 # Tambahkan root project ke sys.path agar import src.* bisa jalan
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from config import RAW_DATA_PATH, CLUSTERING_DATA_PATH, DATA_DIR, OUTPUT_DIR
+from config import RAW_DATA_PATH, CLUSTERING_DATA_PATH, DATA_DIR, OUTPUT_DIR, ARM_DATA_PATH
 
 # Buat folder jika belum ada
 os.makedirs(DATA_DIR, exist_ok=True)
@@ -40,7 +40,11 @@ def main(phase: str):
         run_clustering(CLUSTERING_DATA_PATH)
 
     if phase in ('3', 'all'):
-        print("\n[Phase 3 — ARM belum diimplementasi]")
+        print("\n" + "="*55)
+        print("  Menjalankan Phase 3: ARM")
+        print("="*55 + "\n")
+        from src.arm import run_arm
+        run_arm(ARM_DATA_PATH)
 
     if phase in ('4', 'all'):
         print("\n[Phase 4 — Anomaly Detection belum diimplementasi]")

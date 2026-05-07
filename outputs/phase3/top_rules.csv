@@ -1,0 +1,21 @@
+Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
+1,"CC_Utilization_Category=Very High, Loan Status=Closed, Loan Type=Auto",Account Type=Savings,0.0204,0.6497,1.2957
+2,"Card Type=Visa, Gender=Female, Loan Status=Rejected",Resolution Status=Pending,0.0232,0.6374,1.2727
+3,"Card Type=MasterCard, Feedback Type=Praise, Loan Status=Closed",Resolution Status=Resolved,0.0214,0.6221,1.2462
+4,"Balance_Bucket=Upper-Mid, Gender=Other, Resolution Status=Pending",Account Type=Current,0.0242,0.6173,1.2382
+5,"Gender=Other, Loan Status=Rejected, Rate_Category=Low",Resolution Status=Resolved,0.0206,0.6168,1.2355
+6,"Card Type=MasterCard, Gender=Male, Loan Status=Closed",Resolution Status=Resolved,0.0234,0.6158,1.2336
+7,"CC_Utilization_Category=Very High, Resolution Status=Resolved, Transaction_Size=Medium",Account Type=Savings,0.0246,0.6181,1.2327
+8,"CC_Utilization_Category=Very High, Resolution Status=Resolved, Transaction Type=Deposit",Account Type=Savings,0.03,0.6148,1.2261
+9,"Account Type=Savings, Rate_Category=Moderate, Transaction_Size=Very Large",Resolution Status=Resolved,0.026,0.6103,1.2226
+10,"Account Type=Savings, Balance_Bucket=Low, Transaction Type=Withdrawal",Resolution Status=Resolved,0.0244,0.61,1.222
+11,"CC_Utilization_Category=Very High, Card Type=AMEX, Transaction Type=Withdrawal",Resolution Status=Resolved,0.0206,0.6095,1.2209
+12,"Gender=Other, Loan Status=Approved, Transaction Type=Transfer",Resolution Status=Resolved,0.0218,0.6089,1.2198
+13,"CC_Utilization_Category=Very High, Loan Status=Closed, Resolution Status=Resolved",Account Type=Savings,0.0282,0.6078,1.2121
+14,"Card Type=AMEX, Feedback Type=Complaint, Rate_Category=Low",Resolution Status=Resolved,0.0202,0.6048,1.2115
+15,"Feedback Type=Suggestion, Gender=Female, Loan Type=Auto",Resolution Status=Pending,0.0228,0.6064,1.2108
+16,"Feedback Type=Praise, Gender=Other, Rate_Category=Low",Resolution Status=Resolved,0.0226,0.6043,1.2105
+17,"Card Type=Visa, Loan Status=Rejected, Rate_Category=High",Resolution Status=Pending,0.0206,0.6059,1.2098
+18,"CC_Utilization_Category=Excellent, Gender=Female",Resolution Status=Pending,0.0226,0.6043,1.2066
+19,"Account Type=Current, Balance_Bucket=High, Transaction Type=Transfer",Resolution Status=Resolved,0.0224,0.6022,1.2062
+20,"Gender=Other, Rate_Category=Low, Transaction Type=Withdrawal",Resolution Status=Resolved,0.0224,0.6022,1.2062
