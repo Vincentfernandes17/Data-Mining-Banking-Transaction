@@ -383,6 +383,19 @@ def run_anomaly(path=None):
     plot_anomalies(df)
     report = export_report(anomalies)
 
+    # Simpan dataset GABUNGAN lengkap (semua 5000 baris) untuk dashboard Phase 5:
+    # rasio + konteks + label cluster + kolom anomali. 'classification' = 'Normal'
+    # untuk baris yang tidak ter-flag.
+    df_final = df.copy()
+    df_final['classification'] = 'Normal'
+    df_final.loc[anomalies.index, 'classification'] = anomalies['classification']
+    df_final['is_anomaly'] = df_final['n_methods'] >= 1
+    df_final['is_consensus_anomaly'] = df_final['n_methods'] >= 2
+    out_final = os.path.join(DATA_DIR, 'dataset_final.csv')
+    df_final.to_csv(out_final, index=False)
+    print(f"✅ Dataset final (untuk dashboard) tersimpan → {out_final}  "
+          f"({df_final.shape[0]} baris × {df_final.shape[1]} kolom)")
+
     print("\n" + "=" * 55)
     print("  PHASE 4 SELESAI")
     print("=" * 55)

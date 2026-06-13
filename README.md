@@ -61,16 +61,19 @@ Banking_Transaction/
 ├── config.py                ← Konstanta & parameter
 ├── requirements.txt
 ├── README.md
+├── Laporan_Knowledge_Discovery.md   ← laporan naratif (Phase 5)
 ├── src/
 │   ├── preprocess.py        ← Phase 1
 │   ├── clustering.py        ← Phase 2
 │   ├── arm.py               ← Phase 3
-│   └── anomaly.py           ← Phase 4
+│   ├── anomaly.py           ← Phase 4
+│   └── dashboard.py         ← Phase 5 (Plotly Dash)
 ├── data/
 │   ├── Comprehensive_Banking_Database.csv  ← dataset mentah
 │   ├── dataset_clustering.csv  ← output P1 → input P2 (3 rasio + konteks)
 │   ├── dataset_arm.csv         ← output P1 → input P3 (kategorikal)
-│   └── dataset_clustered.csv   ← output P2 → input P4 (label cluster)
+│   ├── dataset_clustered.csv   ← output P2 → input P4 (label cluster)
+│   └── dataset_final.csv       ← output P4 → input P5 (label cluster + anomali)
 └── outputs/
     ├── phase1/  ← EDA, korelasi, MI, outlier
     ├── phase2/  ← scree (bukti PCA), elbow/silhouette, scatter, dendrogram, profil
@@ -91,13 +94,22 @@ venv\Scripts\activate          # Windows
 # 2. install dependencies
 pip install -r requirements.txt
 
-# 3. jalankan
+# 3. jalankan pipeline analisis
 python main.py --phase 1     # Preprocessing
 python main.py --phase 2     # Clustering
 python main.py --phase 3     # Association Rule Mining
 python main.py --phase 4     # Anomaly Detection
-python main.py --phase all   # Semua berurutan
+python main.py --phase all   # Fase 1–4 berurutan
+
+# 4. jalankan dashboard interaktif (Phase 5) — butuh fase 1–4 sudah dijalankan
+python main.py --phase 5     # lalu buka http://127.0.0.1:8050
 ```
+
+**Phase 5 (Visualisasi & Presentasi Pengetahuan):**
+- Dashboard interaktif Plotly Dash: `src/dashboard.py` (cluster map, rule network,
+  outlier plot, distribusi) — `python main.py --phase 5`.
+- Knowledge Discovery Report: [`Laporan_Knowledge_Discovery.md`](Laporan_Knowledge_Discovery.md)
+  — narasi bisnis lengkap yang menjawab pertanyaan sentral proyek.
 
 Semua plot disimpan otomatis ke `outputs/phaseN/` (backend matplotlib `Agg`,
 jadi pipeline tidak nge-freeze menunggu jendela plot). Urutan fase penting:

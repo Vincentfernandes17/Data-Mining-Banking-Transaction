@@ -7,3 +7,6 @@ scipy>=1.9.0
 mlxtend>=0.21.0
 jupyter>=1.0.0
 ipykernel>=6.0.0
+dash>=2.14.0
+plotly>=5.18.0
+networkx>=3.0

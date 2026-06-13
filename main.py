@@ -61,6 +61,16 @@ def main(phase: str):
         from src.anomaly import run_anomaly
         run_anomaly()
 
+    if phase == '5':
+        print("\n" + "="*55)
+        print("  Menjalankan Phase 5: Dashboard Interaktif")
+        print("="*55 + "\n")
+        from src.dashboard import run_dashboard
+        run_dashboard()
+    elif phase == 'all':
+        print("\n[Phase 5] Dashboard tidak diluncurkan otomatis pada mode 'all' "
+              "(server blocking). Jalankan: python main.py --phase 5")
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(
@@ -69,7 +79,7 @@ if __name__ == '__main__':
     )
     parser.add_argument(
         '--phase',
-        choices=['1', '2', '3', '4', 'all'],
+        choices=['1', '2', '3', '4', '5', 'all'],
         default='all',
         help=(
             'Phase yang dijalankan:\n'
@@ -77,6 +87,7 @@ if __name__ == '__main__':
             '  2   = Clustering\n'
             '  3   = Association Rule Mining\n'
             '  4   = Anomaly Detection\n'
+            '  5   = Dashboard Interaktif (server)\n'
             '  all = Semua phase berurutan'
         )
     )
