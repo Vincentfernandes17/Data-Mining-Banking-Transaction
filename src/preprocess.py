@@ -14,24 +14,31 @@ Atau import fungsinya dari notebook:
 """
 
 import os
+import sys
+for _stream in (sys.stdout, sys.stderr):   # konsol Windows cp1252 → paksa UTF-8
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')   # backend non-interaktif → plot disimpan ke file, pipeline tidak nge-freeze
 import matplotlib.pyplot as plt
 import seaborn as sns
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder, RobustScaler
 from sklearn.feature_selection import mutual_info_classif
 
-DATA_DIR   = 'data'
-OUTPUT_DIR = 'outputs'
+# Semua path absolut relatif terhadap root project (folder di atas src/)
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = os.path.join(BASE_DIR, 'data')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'outputs')
 RAW_PATH   = os.path.join(DATA_DIR, 'Comprehensive_Banking_Database.csv')
 
 os.makedirs(DATA_DIR, exist_ok=True)
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-
-PHASE1_OUTPUT_DIR = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)), '..', 'outputs', 'phase1'
-)
+PHASE1_OUTPUT_DIR = os.path.join(OUTPUT_DIR, 'phase1')
 os.makedirs(PHASE1_OUTPUT_DIR, exist_ok=True)
 
 
@@ -77,7 +84,7 @@ def run_eda(data_set, save_plots=True):
         ax.set_xlabel(col); ax.set_ylabel("Count")
     plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'eda_numerical_dist.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     # Box Plot
     fig, axes = plt.subplots(len(num_features), 1, figsize=(10, 4 * len(num_features)))
@@ -92,7 +99,7 @@ def run_eda(data_set, save_plots=True):
 
     plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'eda_numerical_boxplot.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     # Visualizing Categorical Feature Distribution
     # Kita tidak perlu melakukan visualisasi ke seluruh tipe category
@@ -110,7 +117,7 @@ def run_eda(data_set, save_plots=True):
         ax.tick_params(axis='x', rotation=30)
     plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'eda_categorical_dist.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     # Scatter Plot Financial Feature
     # Scatter plot dipakai untuk melihat hubungan perilaku finansial antar
@@ -122,14 +129,14 @@ def run_eda(data_set, save_plots=True):
                     hue='Transaction Type', alpha=0.7)
     plt.title("Account Balance vs Transaction Amount"); plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'scatter_balance_transaction.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     plt.figure(figsize=(10,6))
     sns.scatterplot(data=data_set, x='Credit Limit', y='Credit Card Balance',
                     hue='Loan Status', alpha=0.7)
     plt.title("Credit Limit vs Credit Card Balance"); plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'scatter_credit.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     # Checking Null Row
     # Tidak terdapat row yang datanya tidak lengkap atau null.
@@ -151,11 +158,38 @@ def run_eda(data_set, save_plots=True):
         'Credit Card Balance','Minimum Payment Due','Rewards Points','Anomaly'
     ] if c in data_set.columns]
 
+    raw_corr = data_set[corr_cols].corr()
     plt.figure(figsize=(10,7))
-    sns.heatmap(data_set[corr_cols].corr(), annot=True, fmt='.2f', cmap='coolwarm', center=0)
+    sns.heatmap(raw_corr, annot=True, fmt='.2f', cmap='coolwarm', center=0)
     plt.title('Correlation Matrix - Raw Data (Before Cleaning)'); plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'correlation_raw.png'), dpi=150)
-    plt.show()
+    plt.close()
+
+    # TEMUAN PENTING — STRUKTUR DATA
+    # Kita hitung berapa pasang fitur numerik yang benar-benar berkorelasi.
+    # Hasilnya: dari sekian banyak pasang, HANYA segelintir yang |r|>0.1 dan
+    # itu pun pasangan turunan (Account Balance vs Balance After Transaction,
+    # Credit Card Balance vs Minimum Payment Due yang korelasinya ~1.0).
+    # Mayoritas fitur INDEPENDEN satu sama lain dan terdistribusi mendekati
+    # uniform (skew ~0). Konsekuensinya untuk fase berikutnya:
+    #   1. PCA tidak akan efektif — tanpa redundansi antar fitur, setiap
+    #      komponen hanya menangkap ~1/n variance (lihat Phase 2).
+    #   2. Clustering pada fitur kontinu MENTAH tidak akan menemukan cluster
+    #      alami — solusinya adalah feature engineering berbasis RASIO
+    #      perilaku yang justru memiliki struktur (skew tinggi).
+    num_only = [c for c in corr_cols if c != 'Anomaly']
+    sub = raw_corr.loc[num_only, num_only]
+    pairs = [(num_only[i], num_only[j], sub.iloc[i, j])
+             for i in range(len(num_only)) for j in range(i+1, len(num_only))
+             if abs(sub.iloc[i, j]) > 0.1]
+    total_pairs = len(num_only) * (len(num_only) - 1) // 2
+    print(f"\n-- Struktur Korelasi --")
+    print(f"Pasangan fitur dengan |r|>0.1 : {len(pairs)} dari {total_pairs} "
+          f"({len(pairs)/total_pairs*100:.0f}%)")
+    for a, b, v in pairs:
+        print(f"   {a} <-> {b}: {v:+.3f}")
+    print("Kesimpulan: mayoritas fitur INDEPENDEN & near-uniform → "
+          "PCA tidak efektif, clustering harus pakai fitur rasio perilaku (lihat Phase 2).")
 
     # Checking Anomaly Ratio
     # Terlihat bahwa dataset ini memiliki anomaly -1 yang lebih sedikit.
@@ -258,17 +292,32 @@ def engineer_features(data_set):
     print("\n=== Fitur Temporal Baru ===")
     print(data_set[['Account_Age_Years','Days_Since_Last_Transaction']].describe().round(2))
 
-    # CC_Utilization: rasio penggunaan kartu kredit vs limit
-    #   (> 1.0 berarti overlimit)
-    # Transaction_to_Balance_Ratio: besar transaksi relatif terhadap saldo
+    # RASIO PERILAKU — ini fitur paling penting untuk clustering (Phase 2).
+    # Berbeda dari fitur mentah yang near-uniform & independen, rasio antara
+    # dua fitur uniform menghasilkan distribusi BERSTRUKTUR (skew tinggi),
+    # sehingga clustering bisa menemukan segmen perilaku yang nyata.
+    #
+    # CC_Utilization        : saldo kartu / limit → tekanan kredit (>1 = over-limit)
+    # Transaction_to_Balance: transaksi / saldo   → intensitas likuiditas
+    # Loan_to_Balance       : pinjaman / saldo     → leverage utang
     data_set['CC_Utilization'] = (
         data_set['Credit Card Balance'] / data_set['Credit Limit']
     )
     data_set['Transaction_to_Balance_Ratio'] = (
         data_set['Transaction Amount'] / data_set['Account Balance'].replace(0, np.nan)
     )
-    print("\n=== Rasio Finansial Baru ===")
-    print(data_set[['CC_Utilization','Transaction_to_Balance_Ratio']].describe().round(2))
+    data_set['Loan_to_Balance_Ratio'] = (
+        data_set['Loan Amount'] / data_set['Account Balance'].replace(0, np.nan)
+    )
+    # Tangani pembagian-nol/inf jika ada saldo 0
+    ratio_cols = ['CC_Utilization', 'Transaction_to_Balance_Ratio', 'Loan_to_Balance_Ratio']
+    data_set[ratio_cols] = data_set[ratio_cols].replace([np.inf, -np.inf], np.nan)
+    for c in ratio_cols:
+        data_set[c] = data_set[c].fillna(data_set[c].median())
+
+    print("\n=== Rasio Perilaku Baru (skew tinggi = ada struktur) ===")
+    print(data_set[ratio_cols].describe().round(2))
+    print("Skewness:", {c: round(data_set[c].skew(), 2) for c in ratio_cols})
 
     return data_set, date_cols
 
@@ -344,7 +393,7 @@ def detect_outliers_prescaling(data_clean, save_plots=True):
     if save_plots:
         plt.savefig(os.path.join(PHASE1_OUTPUT_DIR, 'prescaling_outlier_detection.png'),
                     dpi=150, bbox_inches='tight')
-    plt.show()
+    plt.close()
 
     # Pisahkan fitur berdasarkan rekomendasi scaler
     robust_cols = summary_df[summary_df['Scaler'] == 'RobustScaler']['Feature'].tolist()
@@ -414,11 +463,13 @@ def bin_features(data_clean):
     data_clean['Rate_Category']  = _safe_qcut(data_clean['Interest Rate'],
                                               ['Low','Moderate','High'])
     # CC_Utilization menggunakan domain-based cut karena ada threshold
-    # industri yang bermakna (30%, 70%, 100%)
+    # industri kartu kredit yang bermakna (30%, 70%, 100%). Karena banyak
+    # nasabah pada dataset ini overlimit (>100%), kategori 'Over-Limit'
+    # WAJIB ada agar sinyal tekanan kredit tidak hilang.
     data_clean['CC_Utilization_Category'] = pd.cut(
         data_clean['CC_Utilization'],
-        bins=[-np.inf, 0.09, 0.29, 0.49, 0.70, np.inf],
-        labels=['Excellent','Good','Moderate','High','Very High'],
+        bins=[-np.inf, 0.30, 0.70, 1.00, np.inf],
+        labels=['Low','Moderate','High','Over-Limit'],
         include_lowest=True
     )
 
@@ -438,12 +489,15 @@ def bin_features(data_clean):
 
 def encode_features(data_clean):
     data_clean = data_clean.copy()
-    le = LabelEncoder()
 
-    # Label encoding untuk variabel biner/ordinal
-    data_clean['Account_Type_Encoded']      = le.fit_transform(data_clean['Account Type'])
-    data_clean['Resolution_Status_Encoded'] = le.fit_transform(data_clean['Resolution Status'])
-    print("Loan Status classes:", le.classes_)
+    # Label encoding untuk variabel biner/ordinal.
+    # Gunakan encoder TERPISAH per kolom agar mapping kelas tidak saling timpa.
+    le_acct = LabelEncoder()
+    le_res  = LabelEncoder()
+    data_clean['Account_Type_Encoded']      = le_acct.fit_transform(data_clean['Account Type'])
+    data_clean['Resolution_Status_Encoded'] = le_res.fit_transform(data_clean['Resolution Status'])
+    print("Account Type classes      :", le_acct.classes_.tolist())
+    print("Resolution Status classes :", le_res.classes_.tolist())
 
     # One-Hot Encoding untuk variabel nominal tanpa urutan
     nominal_cols = ['Loan Status', 'Gender', 'Transaction Type',
@@ -502,7 +556,7 @@ def feature_selection(data_encoded, save_plots=True):
         'Credit Card Balance','Minimum Payment Due',
         'Rewards Points','Account_Age_Years',
         'Days_Since_Last_Transaction','CC_Utilization',
-        'Transaction_to_Balance_Ratio'
+        'Transaction_to_Balance_Ratio','Loan_to_Balance_Ratio'
     ] if c in data_encoded.columns]
 
     # Correlation-Matrix Method
@@ -515,7 +569,7 @@ def feature_selection(data_encoded, save_plots=True):
     sns.heatmap(corr_matrix, annot=True, fmt='.2f', cmap='coolwarm', center=0, square=True)
     plt.title('Correlation Matrix - Fitur Numerik'); plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'correlation_matrix.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     print("Pasangan fitur highly correlated (>0.85):")
     for i in range(len(corr_matrix.columns)):
@@ -540,39 +594,41 @@ def feature_selection(data_encoded, save_plots=True):
     plt.title('Mutual Information Score per Fitur\n(Entropy-based Feature Selection)')
     plt.xlabel('Mutual Information Score'); plt.tight_layout()
     if save_plots: plt.savefig(os.path.join(PHASE1_OUTPUT_DIR,'mutual_information.png'), dpi=150)
-    plt.show()
+    plt.close()
     print(mi_df.to_string(index=False))
 
 
 # SELECTING FEATURES & SAVE DATASETS
-# Fitur dipilih berdasarkan kemampuannya menggambarkan finance
-# profile dan behaviour nasabah.
+# Penting: dataset clustering diekspor dalam NILAI ASLI (belum di-scale).
+# Winsorization + scaling dilakukan di Phase 2 agar:
+#   1. Profiling cluster bisa memakai nilai asli (interpretasi bisnis valid)
+#   2. Pemisahan tanggung jawab jelas (Phase 1 = fitur, Phase 2 = jarak)
 #
-# Fitur yang TIDAK dipakai di clustering:
-# - Account Balance After Transaction: turunan Balance + Transaction
-# - Credit Limit: sudah tercermin dalam CC_Utilization
-# - Credit Card Balance: sudah tercermin dalam CC_Utilization
-# - Minimum Payment Due: korelasi sempurna dengan CC Balance
+# Fitur INPUT clustering hanya 3 rasio perilaku (lihat Phase 2: CLUSTER_FEATURES).
+# Sisanya = kolom KONTEKS untuk profiling, dan Anomaly = referensi Phase 4.
+#
+# Mengapa bukan fitur kontinu mentah? Karena terbukti di EDA bahwa fitur
+# mentah independen & near-uniform → tidak ada cluster alami. Rasio perilaku
+# justru punya struktur (skew tinggi) sehingga segmentasi jadi bermakna.
 
 def save_datasets(data_encoded, data_clean):
-    # Dataset untuk Clustering (Phase 2)
-    # Anomaly disimpan sebagai referensi saja — BUKAN input clustering
+    # Dataset untuk Clustering (Phase 2) — diambil dari data_clean (NILAI ASLI)
     clustering_cols = [c for c in [
-        'Age',                          # segmen usia nasabah
-        'Account_Age_Years',            # senioritas/loyalitas nasabah
-        'Account Balance',              # kekayaan likuid nasabah
-        'Loan Amount',                  # eksposur utang
-        'Interest Rate',                # profil risiko kredit
-        'Loan Term',                    # jangka waktu komitmen kredit
-        'Transaction Amount',           # besaran transaksi
-        'Transaction_to_Balance_Ratio', # transaksi relatif terhadap kekayaan
-        'CC_Utilization',               # utilisasi kartu kredit
-        'Rewards Points',               # engagement/loyalitas program bank
-        'Days_Since_Last_Transaction',  # history penggunaan terakhir
-        'Anomaly'                       # referensi Phase 4 — bukan input model
-    ] if c in data_encoded.columns]
+        # --- 3 FITUR INPUT CLUSTERING (rasio perilaku) ---
+        'CC_Utilization',               # tekanan kartu kredit (saldo/limit)
+        'Transaction_to_Balance_Ratio', # intensitas likuiditas (transaksi/saldo)
+        'Loan_to_Balance_Ratio',        # leverage utang (pinjaman/saldo)
+        # --- KONTEKS untuk profiling (tidak masuk jarak) ---
+        'Age', 'Account_Age_Years', 'Account Balance', 'Credit Limit',
+        'Credit Card Balance', 'Loan Amount', 'Transaction Amount',
+        'Transaction Type',   # untuk cek konsistensi balance (Phase 4)
+        'Interest Rate', 'Rewards Points', 'Days_Since_Last_Transaction',
+        'Account Balance After Transaction',
+        # --- referensi Phase 4 (bukan input model) ---
+        'Anomaly'
+    ] if c in data_clean.columns]
 
-    data_encoded[clustering_cols].to_csv(
+    data_clean[clustering_cols].to_csv(
         os.path.join(DATA_DIR, 'dataset_clustering.csv'), index=False
     )
 
@@ -599,7 +655,8 @@ def save_datasets(data_encoded, data_clean):
     )
 
     print("Dataset bersih tersimpan!")
-    print(f"Clustering dataset: {data_encoded[clustering_cols].shape}")
+    print(f"Clustering dataset: {data_clean[clustering_cols].shape}  "
+          f"(3 fitur rasio = input, sisanya konteks/referensi)")
     print(f"ARM dataset: {data_clean[arm_cols].shape}")
 
 

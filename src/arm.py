@@ -16,8 +16,17 @@ Atau import dari notebook:
 """
 
 import os
+import sys
+for _stream in (sys.stdout, sys.stderr):   # konsol Windows cp1252 → paksa UTF-8
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')   # backend non-interaktif → plot disimpan ke file
 import matplotlib.pyplot as plt
 import seaborn as sns
 import warnings
@@ -26,14 +35,15 @@ warnings.filterwarnings('ignore')
 from mlxtend.frequent_patterns import apriori, association_rules
 from mlxtend.preprocessing import TransactionEncoder
 
-DATA_DIR   = 'data'
-OUTPUT_DIR = 'outputs/phase3'
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = os.path.join(BASE_DIR, 'data')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'outputs', 'phase3')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 # Parameter Apriori
 MIN_SUPPORT    = 0.05   # minimum 5% dari total transaksi
 MIN_CONFIDENCE = 0.5    # minimum 50% confidence
-MIN_LIFT       = 1.2    # hanya ambil rules yang non-trivial
+MIN_LIFT       = 1.4    # hanya ambil rules yang non-trivial
 
 # MIN_SUPPORT = 0.05
 # Dipilih karena rule harus muncul cukup sering agar stabil dan meaningful.
@@ -146,7 +156,7 @@ def find_frequent_itemsets(df_encoded, min_support=MIN_SUPPORT):
     plt.title(f'Distribusi Support Frequent Itemsets (min_support={min_support})')
     plt.tight_layout()
     plt.savefig(os.path.join(OUTPUT_DIR, 'support_distribution.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     return frequent_itemsets
 
@@ -287,7 +297,7 @@ def visualize_rules(rules, top_n=15, save_plots=True):
     plt.tight_layout()
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'rules_scatter.png'), dpi=150)
-    plt.show()
+    plt.close()
 
     # ── Plot 2: Bar chart Lift top rules ────────────────────
     plt.figure(figsize=(12, max(6, top_n * 0.5)))
@@ -314,7 +324,7 @@ def visualize_rules(rules, top_n=15, save_plots=True):
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'rules_lift_bar.png'),
                     dpi=150, bbox_inches='tight')
-    plt.show()
+    plt.close()
 
     # ── Plot 3: Heatmap Support x Confidence ────────────────
     plt.figure(figsize=(10, 5))
@@ -332,7 +342,7 @@ def visualize_rules(rules, top_n=15, save_plots=True):
     plt.tight_layout()
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'rules_heatmap.png'), dpi=150)
-    plt.show()
+    plt.close()
 
 
 # ════════════════════════════════════════════════════════════
@@ -394,18 +404,21 @@ ITEM_MEANING_MAP = {
     'Rate_Category=Moderate': 'bunga moderat',
     'Rate_Category=High': 'bunga tinggi',
 
-    'CC_Utilization_Category=Excellent': 'utilisasi kartu sangat rendah',
-    'CC_Utilization_Category=Good': 'utilisasi kartu rendah',
+    # CC_Utilization_Category sekarang: Low / Moderate / High / Over-Limit
+    'CC_Utilization_Category=Low': 'utilisasi kartu rendah',
     'CC_Utilization_Category=Moderate': 'utilisasi kartu sedang',
     'CC_Utilization_Category=High': 'utilisasi kartu tinggi',
-    'CC_Utilization_Category=Very High': 'utilisasi kartu sangat tinggi',
-    'CC_Utilization_Category=Over_Limit': 'pemakaian kartu melebihi limit',
+    'CC_Utilization_Category=Over-Limit': 'pemakaian kartu melebihi limit',
 
-    'Loan_Status=Approved': 'pengajuan disetujui',
-    'Loan_Status=Rejected': 'pengajuan ditolak',
+    # Nama kolom asli memakai SPASI, bukan underscore
+    'Loan Status=Approved': 'pengajuan disetujui',
+    'Loan Status=Rejected': 'pengajuan ditolak',
 
-    'Resolution_Status=Resolved': 'keluhan terselesaikan',
-    'Resolution_Status=Pending': 'keluhan masih tertunda',
+    'Resolution Status=Resolved': 'keluhan terselesaikan',
+    'Resolution Status=Pending': 'keluhan masih tertunda',
+
+    'Account Type=Savings': 'akun tabungan',
+    'Account Type=Current': 'akun giro',
 
     'Feedback Type=Complaint': 'feedback berupa komplain',
     'Feedback Type=Suggestion': 'feedback berupa saran',
@@ -428,24 +441,21 @@ def infer_business_theme(items):
 
     risk_items = {
         'CC_Utilization_Category=High',
-        'CC_Utilization_Category=Very High',
-        'CC_Utilization_Category=Over_Limit',
+        'CC_Utilization_Category=Over-Limit',
         'Rate_Category=High',
         'Transaction_Size=Very Large',
-        'Loan_Status=Rejected'
+        'Loan Status=Rejected'
     }
 
     service_items = {
         'Feedback Type=Complaint',
-        'Resolution_Status=Pending'
+        'Resolution Status=Pending'
     }
 
     value_items = {
         'Balance_Bucket=High',
-        'Loan_Status=Approved',
-        'CC_Utilization_Category=Low',
-        'CC_Utilization_Category=Good',
-        'CC_Utilization_Category=Excellent'
+        'Loan Status=Approved',
+        'CC_Utilization_Category=Low'
     }
 
     if items & risk_items:
@@ -493,7 +503,7 @@ def print_business_interpretation(rules, top_n=10):
 
         print(f"  Makna lift : hubungan ini {lift_msg}.")
         print(f"  Interpretasi bisnis:")
-        print(f"  → Nasabah dengan {antecedent_text} cenderung memiliki {consequent_text}.")
+        print(f"  → Nasabah merupakan {antecedent_text} cenderung memiliki {consequent_text}.")
 
 # ════════════════════════════════════════════════════════════
 # MAIN PIPELINE

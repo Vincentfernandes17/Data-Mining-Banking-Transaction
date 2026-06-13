@@ -13,6 +13,14 @@ import argparse
 import os
 import sys
 
+# Konsol Windows default cp1252 tidak bisa mencetak karakter unicode
+# (→, ✅, dsb) yang dipakai di log. Paksa stdout/stderr ke UTF-8.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 # Tambahkan root project ke sys.path agar import src.* bisa jalan
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
@@ -47,7 +55,11 @@ def main(phase: str):
         run_arm(ARM_DATA_PATH)
 
     if phase in ('4', 'all'):
-        print("\n[Phase 4 — Anomaly Detection belum diimplementasi]")
+        print("\n" + "="*55)
+        print("  Menjalankan Phase 4: Anomaly Detection")
+        print("="*55 + "\n")
+        from src.anomaly import run_anomaly
+        run_anomaly()
 
 
 if __name__ == '__main__':

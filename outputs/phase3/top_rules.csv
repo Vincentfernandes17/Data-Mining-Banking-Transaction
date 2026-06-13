@@ -1,15 +1,16 @@
 Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
-1,"Card Type=Visa, Gender=Female, Loan Status=Rejected",Resolution Status=Pending,0.0232,0.6374,1.2727
-2,"Balance_Bucket=Upper-Mid, Gender=Other, Resolution Status=Pending",Account Type=Current,0.0242,0.6173,1.2382
-3,"Card Type=MasterCard, Gender=Male, Loan Status=Closed",Resolution Status=Resolved,0.0234,0.6158,1.2336
-4,"CC_Utilization_Category=Very High, Resolution Status=Resolved, Transaction_Size=Medium",Account Type=Savings,0.0246,0.6181,1.2327
-5,"CC_Utilization_Category=Very High, Resolution Status=Resolved, Transaction Type=Deposit",Account Type=Savings,0.03,0.6148,1.2261
-6,"Account Type=Savings, Rate_Category=Moderate, Transaction_Size=Very Large",Resolution Status=Resolved,0.026,0.6103,1.2226
-7,"Account Type=Savings, Balance_Bucket=Low, Transaction Type=Withdrawal",Resolution Status=Resolved,0.0244,0.61,1.222
-8,"CC_Utilization_Category=Very High, Loan Status=Closed, Resolution Status=Resolved",Account Type=Savings,0.0282,0.6078,1.2121
-9,"Feedback Type=Suggestion, Gender=Female, Loan Type=Auto",Resolution Status=Pending,0.0228,0.6064,1.2108
-10,"Feedback Type=Praise, Gender=Other, Rate_Category=Low",Resolution Status=Resolved,0.0226,0.6043,1.2105
-11,"CC_Utilization_Category=Excellent, Gender=Female",Resolution Status=Pending,0.0226,0.6043,1.2066
-12,"Account Type=Current, Balance_Bucket=High, Transaction Type=Transfer",Resolution Status=Resolved,0.0224,0.6022,1.2062
-13,"Gender=Other, Rate_Category=Low, Transaction Type=Withdrawal",Resolution Status=Resolved,0.0224,0.6022,1.2062
-14,"CC_Utilization_Category=Moderate, Rate_Category=High, Resolution Status=Resolved",Account Type=Current,0.0224,0.5989,1.2012
+1,"Age_Group=Senior, Loan Type=Mortgage, Loan_Size=Very Large",Loan Status=Closed,0.01,0.5263,1.5853
+2,"Balance_Bucket=Lower-Mid, Card Type=Visa, Loan Status=Approved",Rate_Category=High,0.0132,0.5238,1.5711
+3,"Age_Group=Adult, Loan Type=Personal, Loan_Size=Large",Feedback Type=Praise,0.0102,0.51,1.5644
+4,"Balance_Bucket=Lower-Mid, CC_Utilization_Category=Over-Limit, Resolution Status=Resolved",Transaction Type=Transfer,0.011,0.5,1.5347
+5,"Age_Group=Young, CC_Utilization_Category=Moderate, Loan_Size=Small",Transaction Type=Transfer,0.0118,0.5,1.5347
+6,"Age_Group=Adult, Balance_Bucket=Upper-Mid, Rate_Category=High",Feedback Type=Praise,0.0108,0.5,1.5337
+7,"Feedback Type=Praise, Loan Type=Personal, Loan_Size=Small",Rate_Category=High,0.0136,0.5037,1.5108
+8,"Age_Group=Senior, Gender=Female, Loan_Size=Small",Loan Status=Approved,0.0114,0.5135,1.5015
+9,"Age_Group=Senior, Rate_Category=Moderate, Transaction Type=Deposit",Loan Status=Approved,0.0138,0.5074,1.4835
+10,"Card Type=Visa, Loan_Size=Very Large, Transaction_Size=Large",CC_Utilization_Category=Moderate,0.0114,0.5588,1.4714
+11,"Age_Group=Senior, Loan Status=Approved, Loan_Size=Small",Gender=Female,0.0114,0.5044,1.4604
+12,"Balance_Bucket=Low, CC_Utilization_Category=Low, Transaction_Size=Very Large",Loan Type=Mortgage,0.0104,0.5,1.4603
+13,"Age_Group=Young, Loan_Size=Small, Transaction Type=Transfer",CC_Utilization_Category=Moderate,0.0118,0.5413,1.4252
+14,"Feedback Type=Praise, Loan Type=Mortgage, Loan_Size=Very Large",CC_Utilization_Category=Moderate,0.013,0.5372,1.4144
+15,"Balance_Bucket=High, Card Type=AMEX, Loan_Size=Small",CC_Utilization_Category=Moderate,0.0108,0.5347,1.4077

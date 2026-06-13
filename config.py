@@ -48,12 +48,13 @@ NOMINAL_COLS = [
     'Loan Type', 'Card Type', 'Feedback Type', 'Resolution Status'
 ]
 
-CLUSTERING_COLS = [
-    'Age', 'Account_Age_Years', 'Account Balance',
-    'Loan Amount', 'Interest Rate', 'Loan Term',
-    'Transaction Amount', 'Transaction_to_Balance_Ratio',
-    'CC_Utilization', 'Rewards Points',
-    'Days_Since_Last_Transaction'
+# FITUR INPUT clustering = HANYA 3 rasio perilaku (lihat src/clustering.py).
+# Fitur kontinu mentah TIDAK dipakai karena terbukti independen & near-uniform
+# (tidak ada cluster alami). Rasio perilaku punya struktur (skew tinggi).
+CLUSTER_FEATURES = [
+    'CC_Utilization',                # tekanan kartu kredit (saldo/limit)
+    'Transaction_to_Balance_Ratio',  # intensitas likuiditas (transaksi/saldo)
+    'Loan_to_Balance_Ratio',         # leverage utang (pinjaman/saldo)
 ]
 
 ARM_COLS = [
@@ -64,12 +65,16 @@ ARM_COLS = [
     'Feedback Type', 'Resolution Status'
 ]
 
-# Parameter Clustering 
+# Parameter Clustering
 K_RANGE      = range(2, 11)
-# BEST_K       = 
+BEST_K       = 3        # dipilih atas dasar domain (justifikasi di src/clustering.py)
+WINSOR_LIMIT = 0.02     # cap 2% ekor atas sebelum scaling
 N_INIT       = 10
 RANDOM_STATE = 42
 
-#  Parameter DBSCAN 
-DBSCAN_EPS         = 0.5
-DBSCAN_MIN_SAMPLES = 5
+#  Parameter DBSCAN (eps dicari otomatis di src/clustering.py)
+DBSCAN_MIN_SAMPLES = 10
+
+# Parameter Anomaly Detection (Phase 4)
+Z_THRESH       = 3.0
+IF_CONTAMINATION = 0.05

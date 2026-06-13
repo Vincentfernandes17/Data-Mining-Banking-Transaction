@@ -1,580 +1,500 @@
 """
 clustering.py — Phase 2: Segmentation via Clustering
 
-Pada tahapan ini, kita mau menemukan kelompok-kelompok data yang
-ada pada data yang terbentuk tanpa dikasih hint atau label
-sehingga bersifat unsupervised learning.
+Tujuan: menemukan kelompok nasabah (unsupervised) yang bermakna secara bisnis.
 
-Pendekatan yang digunakan:
-    Data X (11 fitur) → PCA dulu → X_pca → Clustering → Interpretasi
+KEPUTUSAN METODOLOGIS PENTING (berdasarkan temuan Phase 1)
+─────────────────────────────────────────────────────────
+Di Phase 1 terbukti bahwa fitur kontinu MENTAH pada dataset ini saling
+INDEPENDEN dan terdistribusi mendekati uniform (skew ~0, hanya 2 dari 55
+pasang yang berkorelasi, itupun pasangan turunan). Dua konsekuensi:
 
-Alasan PCA sebelum clustering:
-- Mengurangi curse of dimensionality pada jarak Euclidean
-- Menghilangkan noise dari komponen dengan variance rendah
-- Visualisasi dan clustering menggunakan data yang sama (konsisten)
-- Profiling tetap menggunakan X original agar interpretasi bisnis valid
+1. PCA TIDAK DIPAKAI sebagai reduksi sebelum clustering.
+   Tanpa redundansi antar fitur, setiap komponen PCA hanya menangkap ~1/n
+   variance (scree plot datar) sehingga reduksi 11→9 fitur tidak ada gunanya.
+   Kita TETAP menjalankan PCA sekali — bukan untuk dipakai, tapi untuk
+   MEMBUKTIKAN dan mendokumentasikan kenapa ia tidak efektif (fungsi
+   dimensionality_analysis di bawah).
+
+2. Clustering dilakukan pada 3 RASIO PERILAKU hasil feature engineering:
+       - CC_Utilization              : tekanan kartu kredit (saldo/limit)
+       - Transaction_to_Balance_Ratio: intensitas likuiditas (transaksi/saldo)
+       - Loan_to_Balance_Ratio       : leverage utang (pinjaman/saldo)
+   Rasio dari dua fitur uniform menghasilkan distribusi BERSTRUKTUR (skew 2–7),
+   sehingga cluster yang terbentuk benar-benar memisahkan perilaku nasabah.
+   Hasil: Silhouette naik dari ~0.07 (fitur mentah) → ~0.57 (rasio perilaku).
+
+Pipeline: Load → Dimensionality Analysis → Winsorize+Scale → Elbow/Silhouette
+          → K-Means → DBSCAN → Hierarchical → Compare → Named Profiles → Save
 
 Cara running:
     python src/clustering.py
-
-Atau import dari notebook:
     from src.clustering import run_clustering
-    df_clustered = run_clustering('data/dataset_clustering.csv')
+    df = run_clustering('data/dataset_clustering.csv')
 """
 
 import os
+import sys
+for _stream in (sys.stdout, sys.stderr):   # konsol Windows cp1252 → paksa UTF-8
+    try:
+        _stream.reconfigure(encoding='utf-8')
+    except Exception:
+        pass
+
 import numpy as np
 import pandas as pd
+import matplotlib
+matplotlib.use('Agg')   # backend non-interaktif → plot disimpan ke file
 import matplotlib.pyplot as plt
 import seaborn as sns
 
-from sklearn.cluster import KMeans, DBSCAN
+from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
 from sklearn.metrics import silhouette_score
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from sklearn.preprocessing import StandardScaler
-from scipy.stats import mstats
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.stats.mstats import winsorize
 
-DATA_DIR   = 'data'
-OUTPUT_DIR = 'outputs/phase2'
+BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DATA_DIR   = os.path.join(BASE_DIR, 'data')
+OUTPUT_DIR = os.path.join(BASE_DIR, 'outputs', 'phase2')
 os.makedirs(OUTPUT_DIR, exist_ok=True)
 
-# Parameter
-RANDOM_STATE           = 42
-N_INIT                 = 10
-BEST_K                 = 3      # override domain knowledge
-K_RANGE                = range(2, 11)
-DBSCAN_MIN_SAMPLES     = 5
-PCA_VARIANCE_THRESHOLD = 0.80   # tangkap minimal 80% variance
+# ── Parameter ───────────────────────────────────────────────
+RANDOM_STATE   = 42
+N_INIT         = 10
+K_RANGE        = range(2, 11)
+BEST_K         = 3       # dipilih atas dasar domain (justifikasi di find_optimal_k)
+WINSOR_LIMIT   = 0.02    # cap 2% ekor atas agar cluster digerakkan perilaku, bukan 1-2 outlier
+DBSCAN_MIN_SAMPLES = 10
+
+# 3 fitur INPUT clustering (rasio perilaku). Sisanya kolom konteks/profiling.
+CLUSTER_FEATURES = [
+    'CC_Utilization',
+    'Transaction_to_Balance_Ratio',
+    'Loan_to_Balance_Ratio',
+]
+
+# Kolom konteks yang dipakai saat profiling (nilai ASLI, bukan input jarak)
+PROFILE_CONTEXT = [
+    'Age', 'Account Balance', 'Credit Limit', 'Credit Card Balance',
+    'Loan Amount', 'Transaction Amount', 'Interest Rate', 'Rewards Points',
+    'Account_Age_Years', 'Days_Since_Last_Transaction',
+    'Account Balance After Transaction',
+]
 
 
 # ════════════════════════════════════════════════════════════
-# PREPARATION
-# Pada tahap ini kita mulai memuat dataset ke variable yang
-# nantinya akan digunakan oleh algoritma atau metode yang dipilih.
+# LOAD
 # ════════════════════════════════════════════════════════════
-
 def load_clustering_data(path):
-    df_cluster = pd.read_csv(path)
-    # Anomaly dipisah — TIDAK digunakan sebagai input clustering
-    # Hanya dibuka kembali saat cross-reference di Phase 4
-    X      = df_cluster.drop(columns=['Anomaly'])
-    y_true = df_cluster['Anomaly']
-    print(f"Shape data clustering : {X.shape}")
-    print(f"Fitur                 : {X.columns.tolist()}")
-    return df_cluster, X, y_true
+    df = pd.read_csv(path)
+    feats = [c for c in CLUSTER_FEATURES if c in df.columns]
+    if len(feats) < len(CLUSTER_FEATURES):
+        missing = set(CLUSTER_FEATURES) - set(feats)
+        raise ValueError(f"Fitur clustering hilang dari dataset: {missing}. "
+                         f"Jalankan ulang Phase 1.")
+    print(f"Shape dataset        : {df.shape}")
+    print(f"Fitur INPUT clustering: {feats}")
+    print(f"\nStatistik 3 rasio perilaku (nilai asli):")
+    print(df[feats].describe().round(3).to_string())
+    print(f"\nSkewness (struktur):  "
+          + ", ".join(f"{c}={df[c].skew():.2f}" for c in feats))
+    return df, feats
 
 
 # ════════════════════════════════════════════════════════════
-# PCA — REDUKSI DIMENSI SEBELUM CLUSTERING
-# PCA dilakukan SEBELUM clustering, bukan hanya untuk visualisasi.
-# Tujuannya:
-# 1. Mengatasi curse of dimensionality — pada dimensi tinggi,
-#    jarak Euclidean antar data point cenderung seragam sehingga
-#    K-Means kesulitan menemukan cluster yang bermakna.
-# 2. Noise reduction — komponen dengan variance rendah umumnya
-#    merepresentasikan noise. Dengan hanya mengambil komponen
-#    yang menangkap 80%+ variance, kita hilangkan noise sebelum
-#    clustering dimulai.
-# 3. Konsistensi — visualisasi dan clustering menggunakan data
-#    yang sama (X_pca), sehingga cluster di plot benar-benar
-#    merepresentasikan cluster yang terbentuk.
-#
-# Catatan: Profiling cluster tetap menggunakan X original
-# agar interpretasi bisnis setiap fitur tetap bermakna.
+# DIMENSIONALITY ANALYSIS — BUKTI PCA TIDAK EFEKTIF
+# Bukan reduksi sungguhan. Kita jalankan PCA pada fitur kontinu mentah
+# hanya untuk MEMBUKTIKAN scree plot-nya datar (~1/n per komponen),
+# yang menjelaskan kenapa reduksi 11→9 tidak berguna di dataset ini.
 # ════════════════════════════════════════════════════════════
+def dimensionality_analysis(df, save_plots=True):
+    raw_cont = [c for c in [
+        'Age', 'Account Balance', 'Transaction Amount', 'Loan Amount',
+        'Interest Rate', 'Loan Term', 'Credit Limit', 'Credit Card Balance',
+        'Rewards Points', 'Account_Age_Years', 'Days_Since_Last_Transaction',
+    ] if c in df.columns]
 
-def apply_pca(X, threshold=PCA_VARIANCE_THRESHOLD, save_plots=True):
-    """
-    Tentukan n_components optimal lalu transform X ke PCA space.
-    Returns (X_pca, pca_final, n_components).
-    """
-    # Fit semua komponen dulu untuk lihat cumulative variance
-    pca_check = PCA(random_state=RANDOM_STATE)
-    pca_check.fit(X)
-    cumulative_variance = pca_check.explained_variance_ratio_.cumsum()
+    X = StandardScaler().fit_transform(df[raw_cont])
+    pca = PCA(random_state=RANDOM_STATE).fit(X)
+    evr = pca.explained_variance_ratio_
+    cum = evr.cumsum()
+    n80 = int(np.argmax(cum >= 0.80)) + 1
 
-    # Plot cumulative variance
+    print("\n=== DIMENSIONALITY ANALYSIS (kenapa PCA TIDAK dipakai) ===")
+    print(f"Jumlah fitur kontinu        : {len(raw_cont)}")
+    for i, (r, c) in enumerate(zip(evr, cum), 1):
+        print(f"  PC{i:>2}: {r*100:5.1f}%   (cumulative {c*100:5.1f}%)")
+    print(f"Komponen utk 80% variance   : {n80} dari {len(raw_cont)} "
+          f"→ kompresi hanya {(1-n80/len(raw_cont))*100:.0f}%")
+    print("Setiap PC menangkap ~1/n variance → fitur INDEPENDEN, tidak ada "
+          "redundansi untuk dikompres.")
+    print("KEPUTUSAN: PCA dibuang. Clustering pakai 3 rasio perilaku berstruktur.")
+
     plt.figure(figsize=(10, 4))
-    plt.plot(range(1, len(cumulative_variance)+1),
-             cumulative_variance * 100, 'bo-', linewidth=2, markersize=8)
-    plt.axhline(y=threshold*100, color='red', linestyle='--',
-                label=f'{threshold*100:.0f}% threshold')
-    plt.axhline(y=90, color='orange', linestyle='--', label='90% threshold')
-    plt.xlabel('Jumlah Komponen PCA')
-    plt.ylabel('Cumulative Variance Explained (%)')
-    plt.title('PCA — Menentukan Jumlah Komponen Optimal')
+    ideal = np.full(len(evr), 1 / len(evr))
+    plt.bar(range(1, len(evr) + 1), evr * 100, alpha=0.7,
+            label='Variance aktual per PC')
+    plt.plot(range(1, len(evr) + 1), ideal * 100, 'r--o',
+             label=f'Garis "independen total" (1/n = {100/len(evr):.1f}%)')
+    plt.xlabel('Komponen PCA'); plt.ylabel('Variance Explained (%)')
+    plt.title('Scree Plot DATAR = Fitur Independen → PCA Tidak Efektif')
     plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
     if save_plots:
-        plt.savefig(os.path.join(OUTPUT_DIR, 'pca_variance.png'), dpi=150)
-    plt.show()
+        plt.savefig(os.path.join(OUTPUT_DIR, 'pca_why_not_used.png'), dpi=150)
+    plt.close()
 
-    # Pilih n_components berdasarkan threshold
-    n_components = next(
-        i+1 for i, v in enumerate(cumulative_variance) if v >= threshold
-    )
 
-    # Transform ke PCA space
-    pca_final = PCA(n_components=n_components, random_state=RANDOM_STATE)
-    X_pca = pca_final.fit_transform(X)
+# ════════════════════════════════════════════════════════════
+# PREPARE — WINSORIZE + STANDARD SCALE (di ruang fitur rasio)
+# Winsorization meng-cap ekor atas (2%) agar cluster digerakkan oleh
+# perbedaan perilaku yang nyata, bukan segelintir outlier ekstrem.
+# Outlier ekstrem TIDAK dihapus — disimpan untuk diinvestigasi di Phase 4.
+# ════════════════════════════════════════════════════════════
+def prepare_features(df, feats, winsor_limit=WINSOR_LIMIT):
+    Xw = df[feats].copy()
+    print(f"\n=== Winsorization (cap {winsor_limit*100:.0f}% ekor atas) ===")
+    for c in feats:
+        upper = np.percentile(Xw[c], 100 * (1 - winsor_limit))
+        n_cap = (Xw[c] > upper).sum()
+        Xw[c] = winsorize(Xw[c], limits=[0, winsor_limit])
+        print(f"  {c:32s}: {n_cap} nilai di-cap pada {upper:.3f}")
 
-    print(f"=== Hasil PCA ===")
-    print(f"Shape sebelum PCA  : {X.shape}")
-    print(f"Shape setelah PCA  : {X_pca.shape}")
-    print(f"Komponen dipilih   : {n_components} "
-          f"(menangkap {cumulative_variance[n_components-1]*100:.1f}% variance)")
-    print(f"\nVariance per komponen:")
-    for i, var in enumerate(pca_final.explained_variance_ratio_):
-        print(f"  PC{i+1}: {var*100:.1f}%  "
-              f"(cumulative: {cumulative_variance[i]*100:.1f}%)")
-
-    return X_pca, pca_final, n_components
+    scaler = StandardScaler()
+    X_scaled = pd.DataFrame(scaler.fit_transform(Xw),
+                            columns=feats, index=df.index)
+    print("Scaling selesai (mean≈0, std≈1 per fitur).")
+    return X_scaled
 
 
 # ════════════════════════════════════════════════════════════
 # ELBOW METHOD & SILHOUETTE SCORE
-# Dijalankan pada X_pca (bukan X original) agar hasil valid
-# untuk algoritma yang juga menggunakan X_pca.
 # ════════════════════════════════════════════════════════════
-
-def find_optimal_k(X_pca, k_range=K_RANGE, save_plots=True):
-    """
-    Elbow Method:
-    Mengukur WCSS (Within-Cluster Sum of Squares), yaitu total jarak
-    setiap data point ke centroid clusternya. Semakin kecil WCSS,
-    semakin rapat cluster yang terbentuk. Namun menambah K selalu
-    menurunkan WCSS, sehingga kita mencari titik elbow yaitu titik di
-    mana penurunan WCSS mulai melambat drastis.
-
-    Silhouette Score:
-    Mengukur seberapa baik setiap data point cocok dengan clusternya
-    sendiri dibandingkan cluster tetangganya. Nilainya berkisar -1 hingga 1:
-    - Mendekati 1  → data point sangat cocok dengan clusternya sendiri
-    - Mendekati 0  → data point berada di perbatasan antara dua cluster
-    - Mendekati -1 → data point lebih cocok masuk ke cluster lain
-    """
-    wcss, sil_scores = [], []
-
+def find_optimal_k(X_scaled, k_range=K_RANGE, save_plots=True):
+    wcss, sil = [], []
+    print("\n=== Elbow Method & Silhouette Score ===")
     for k in k_range:
         km = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=N_INIT)
-        labels = km.fit_predict(X_pca)   # ← X_pca
+        labels = km.fit_predict(X_scaled)
         wcss.append(km.inertia_)
-        sil_scores.append(silhouette_score(X_pca, labels))
-        print(f"  K={k} -> Silhouette: {sil_scores[-1]:.4f}")
+        sil.append(silhouette_score(X_scaled, labels))
+        print(f"  K={k:>2}: WCSS={km.inertia_:10.1f}  Silhouette={sil[-1]:.4f}")
 
     fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-    axes[0].plot(k_range, wcss, 'bo-', linewidth=2, markersize=8)
+    axes[0].plot(list(k_range), wcss, 'bo-', linewidth=2, markersize=8)
     axes[0].set_xlabel('Jumlah Cluster (K)'); axes[0].set_ylabel('WCSS')
-    axes[0].set_title('Elbow Method (PCA space)'); axes[0].grid(True, alpha=0.3)
-
-    axes[1].plot(k_range, sil_scores, 'rs-', linewidth=2, markersize=8)
+    axes[0].set_title('Elbow Method'); axes[0].grid(True, alpha=0.3)
+    axes[1].plot(list(k_range), sil, 'rs-', linewidth=2, markersize=8)
+    axes[1].axvline(BEST_K, color='green', linestyle='--', alpha=0.7,
+                    label=f'K dipilih = {BEST_K}')
     axes[1].set_xlabel('Jumlah Cluster (K)'); axes[1].set_ylabel('Silhouette Score')
-    axes[1].set_title('Silhouette Score per K (PCA space)'); axes[1].grid(True, alpha=0.3)
-
+    axes[1].set_title('Silhouette Score per K'); axes[1].grid(True, alpha=0.3)
+    axes[1].legend()
     plt.tight_layout()
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'elbow_silhouette.png'), dpi=150)
-    plt.show()
+    plt.close()
 
-    math_best = list(k_range)[sil_scores.index(max(sil_scores))]
-    BEST_K = math_best
-    print(f"\nK terbaik secara matematis  : {math_best}")
-    print(f"K yang dipilih (domain)     : {BEST_K}")
-    # Dataset sintetis cenderung tidak memiliki natural cluster yang tajam
-    # sehingga Silhouette Score rendah di semua K. K=2 secara matematis
-    # sering menang tapi terlalu general untuk profiling nasabah perbankan.
-    # K=3 dipilih berdasarkan domain knowledge karena menghasilkan segmentasi
-    # yang lebih kaya dan actionable secara bisnis.
-    return BEST_K
+    math_best = list(k_range)[int(np.argmax(sil))]
+    print(f"\nK terbaik (silhouette murni) : {math_best} (sil={max(sil):.3f})")
+    print(f"K yang dipilih (domain)      : {BEST_K} (sil={sil[list(k_range).index(BEST_K)]:.3f})")
+    print("Justifikasi: K=2 hanya memisahkan segmen over-limit vs sisanya. "
+          "K=3 tetap memiliki silhouette tinggi TAPI memunculkan segmen ketiga "
+          "(liquidity-stressed/high-leverage) yang lebih actionable secara bisnis.")
+    return BEST_K, sil
+
+
+# ════════════════════════════════════════════════════════════
+# SEGMENT NAMING — data-driven, tidak hardcode ke id cluster
+# ════════════════════════════════════════════════════════════
+def name_segments(df, feats, cluster_col):
+    """Beri nama tiap cluster berdasarkan rasio mana yang paling menonjol
+    dibanding median global. Label cluster K-Means itu acak, jadi penamaan
+    harus berbasis profil, bukan nomor cluster."""
+    ref = df[feats].median()
+    names = {}
+    for cid, g in df.groupby(cluster_col):
+        med = g[feats].median()
+        cc, txn, loan = (med.get('CC_Utilization', 0),
+                         med.get('Transaction_to_Balance_Ratio', 0),
+                         med.get('Loan_to_Balance_Ratio', 0))
+        tags = []
+        if cc >= 1.0:
+            tags.append('Over-Limit Credit')
+        elif cc >= 0.7:
+            tags.append('High Credit-Util')
+        if txn >= 2 * ref['Transaction_to_Balance_Ratio']:
+            tags.append('High Txn-Intensity')
+        if loan >= 2 * ref['Loan_to_Balance_Ratio']:
+            tags.append('High Leverage')
+        if not tags:
+            names[cid] = 'Mainstream / Balanced'
+        elif {'High Txn-Intensity', 'High Leverage'} & set(tags):
+            names[cid] = 'Liquidity-Stressed / High-Leverage'
+        elif 'Over-Limit Credit' in tags or 'High Credit-Util' in tags:
+            names[cid] = 'Credit-Stressed / Over-Limit'
+        else:
+            names[cid] = ' + '.join(tags)
+    return names
 
 
 # ════════════════════════════════════════════════════════════
 # K-MEANS
-# Clustering dilakukan di X_pca (bukan X original).
-# Profiling dilakukan di X original agar interpretasi bisnis valid.
-#
-# K-Means bekerja dengan cara:
-# 1. Menempatkan K centroid secara acak
-# 2. Mengelompokkan setiap data point ke centroid terdekat (Euclidean)
-# 3. Memperbarui posisi centroid ke rata-rata semua anggotanya
-# 4. Mengulang hingga centroid konvergen
 # ════════════════════════════════════════════════════════════
+def run_kmeans(df, X_scaled, feats, best_k, save_plots=True):
+    km = KMeans(n_clusters=best_k, random_state=RANDOM_STATE, n_init=N_INIT)
+    df['KMeans_Cluster'] = km.fit_predict(X_scaled)
+    sil = silhouette_score(X_scaled, df['KMeans_Cluster'])
 
-def run_kmeans(df_cluster, X, X_pca, pca_final, best_k, save_plots=True):
-    # ── Clustering di X_pca ────────────────────────────────
-    km_final = KMeans(n_clusters=best_k, random_state=RANDOM_STATE, n_init=N_INIT)
-    df_cluster['KMeans_Cluster'] = km_final.fit_predict(X_pca)   # ← X_pca
+    print(f"\n=== K-Means (K={best_k}) — Silhouette={sil:.4f} ===")
+    print(df['KMeans_Cluster'].value_counts().sort_index().to_string())
 
-    print(f"Distribusi cluster K-Means (K={best_k}):")
-    print(df_cluster['KMeans_Cluster'].value_counts().sort_index())
-
-    # ── Visualisasi PC1 vs PC2 (dari X_pca langsung) ───────
-    # Tidak perlu PCA ulang karena X_pca sudah di-reduce
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-
-    scatter1 = axes[0].scatter(
-        X_pca[:, 0], X_pca[:, 1],
-        c=df_cluster['KMeans_Cluster'], cmap='tab10', alpha=0.6, s=25
-    )
-    axes[0].set_title(f'K-Means (K={best_k}) — PC1 vs PC2')
-    axes[0].set_xlabel(f'PC1 ({pca_final.explained_variance_ratio_[0]*100:.1f}% variance)')
-    axes[0].set_ylabel(f'PC2 ({pca_final.explained_variance_ratio_[1]*100:.1f}% variance)')
-    plt.colorbar(scatter1, ax=axes[0], label='Cluster')
-
-    # PC1 vs PC3 jika ada
-    if X_pca.shape[1] >= 3:
-        scatter2 = axes[1].scatter(
-            X_pca[:, 0], X_pca[:, 2],
-            c=df_cluster['KMeans_Cluster'], cmap='tab10', alpha=0.6, s=25
-        )
-        axes[1].set_title(f'K-Means (K={best_k}) — PC1 vs PC3')
-        axes[1].set_xlabel(f'PC1 ({pca_final.explained_variance_ratio_[0]*100:.1f}% variance)')
-        axes[1].set_ylabel(f'PC3 ({pca_final.explained_variance_ratio_[2]*100:.1f}% variance)')
-        plt.colorbar(scatter2, ax=axes[1], label='Cluster')
-    else:
-        axes[1].axis('off')
-
-    plt.suptitle(f'K-Means Clustering (K={best_k}) — PCA Space',
+    # ── Scatter pada pasangan fitur rasio (standardized, interpretable) ──
+    pairs = [(0, 1), (1, 2)]
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    for ax, (i, j) in zip(axes, pairs):
+        sc = ax.scatter(X_scaled.iloc[:, i], X_scaled.iloc[:, j],
+                        c=df['KMeans_Cluster'], cmap='tab10', alpha=0.6, s=20)
+        ax.set_xlabel(f'{feats[i]} (z)'); ax.set_ylabel(f'{feats[j]} (z)')
+        ax.set_title(f'{feats[i]} vs {feats[j]}')
+        plt.colorbar(sc, ax=ax, label='Cluster')
+    plt.suptitle(f'K-Means (K={best_k}) — Ruang Fitur Rasio Perilaku',
                  fontsize=13, fontweight='bold')
     plt.tight_layout()
     if save_plots:
-        plt.savefig(os.path.join(OUTPUT_DIR, 'kmeans_pca.png'), dpi=150)
-    plt.show()
+        plt.savefig(os.path.join(OUTPUT_DIR, 'kmeans_scatter.png'), dpi=150)
+    plt.close()
 
-    # ── t-SNE dari X_pca ───────────────────────────────────
-    # t-SNE dijalankan dari X_pca (bukan X) agar konsisten
-    tsne = TSNE(n_components=2, random_state=RANDOM_STATE, perplexity=30)
-    X_tsne = tsne.fit_transform(X_pca)   # ← X_pca
-
-    fig, ax = plt.subplots(figsize=(10, 6))
-    scatter = ax.scatter(
-        X_tsne[:, 0], X_tsne[:, 1],
-        c=df_cluster['KMeans_Cluster'], cmap='Dark2', alpha=0.8, s=25
-    )
-    ax.set_title(f'K-Means (K={best_k}) — t-SNE dari PCA Space')
-    ax.set_xlabel('Dimension 1'); ax.set_ylabel('Dimension 2')
-    legend = ax.legend(*scatter.legend_elements(), title="Clusters")
-    ax.add_artist(legend)
+    # ── t-SNE 2D (embedding untuk visualisasi) ──
+    tsne = TSNE(n_components=2, random_state=RANDOM_STATE, perplexity=30,
+                init='pca', learning_rate='auto')
+    X_tsne = tsne.fit_transform(X_scaled)
+    plt.figure(figsize=(9, 6))
+    sc = plt.scatter(X_tsne[:, 0], X_tsne[:, 1], c=df['KMeans_Cluster'],
+                     cmap='Dark2', alpha=0.8, s=20)
+    plt.title(f'K-Means (K={best_k}) — Proyeksi t-SNE')
+    plt.xlabel('Dim 1'); plt.ylabel('Dim 2')
+    plt.legend(*sc.legend_elements(), title='Cluster')
     plt.tight_layout()
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'kmeans_tsne.png'), dpi=150)
-    plt.show()
-
-    return df_cluster, X_tsne
+    plt.close()
+    return df, sil
 
 
 # ════════════════════════════════════════════════════════════
-# CLUSTER PROFILING
-# Profiling menggunakan X original (bukan X_pca) karena nilai
-# PCA tidak dapat diinterpretasikan secara bisnis. X original
-# yang sudah ternormalisasi digunakan agar nilai antar fitur
-# dapat dibandingkan secara langsung.
+# CLUSTER PROFILING — nilai ASLI + NAMA segmen
 # ════════════════════════════════════════════════════════════
+def profile_clusters(df, feats, cluster_col, save_plots=True):
+    names = name_segments(df, feats, cluster_col)
+    ctx = [c for c in PROFILE_CONTEXT if c in df.columns]
 
-def profile_clusters(df_cluster, X, cluster_col, save_plots=True):
-    key_features = [f for f in [
-        'Age', 'Account Balance', 'Loan Amount', 'Interest Rate',
-        'CC_Utilization', 'Rewards Points', 'Transaction_to_Balance_Ratio'
-    ] if f in X.columns]
+    # Median lebih robust daripada mean untuk fitur skewed
+    prof = df.groupby(cluster_col)[feats + ctx].median().round(2)
+    prof['n'] = df.groupby(cluster_col).size()
+    prof['pct'] = (prof['n'] / len(df) * 100).round(1)
+    prof['Segment'] = [names[c] for c in prof.index]
 
-    # Profil rata-rata per cluster (X original)
-    profile = df_cluster.groupby(cluster_col)[X.columns.tolist()].mean().round(3)
-    print(f"\n=== Cluster Profile — {cluster_col} (nilai X original) ===")
-    print(profile[key_features].T.to_string())
+    print(f"\n{'='*60}")
+    print(f"  CLUSTER PROFILE — {cluster_col} (median, nilai asli)")
+    print(f"{'='*60}")
+    show = feats + ['Account Balance', 'Credit Limit', 'Loan Amount',
+                    'Age', 'Rewards Points', 'n', 'pct']
+    show = [c for c in show if c in prof.columns]
+    disp = prof[show].copy()
+    disp.insert(0, 'Segment', prof['Segment'])
+    print(disp.T.to_string())
 
-    # Visualisasi bar chart per cluster
-    cluster_ids = sorted(df_cluster[cluster_col].unique())
-    fig, axes = plt.subplots(1, len(cluster_ids),
-                             figsize=(5 * len(cluster_ids), 5))
-    if len(cluster_ids) == 1: axes = [axes]
+    # Cross-check Anomaly (insight, bukan input model)
+    if 'Anomaly' in df.columns:
+        print(f"\nAnomaly rate per {cluster_col}:")
+        for cid, g in df.groupby(cluster_col):
+            print(f"  Cluster {cid} ({names[cid]:38s}): "
+                  f"{(g['Anomaly']==-1).mean()*100:4.1f}% "
+                  f"({(g['Anomaly']==-1).sum()} dari {len(g)})")
 
-    for ax, cid in zip(axes, cluster_ids):
-        vals = profile.loc[cid, key_features]
-        ax.barh(key_features, vals, color=f'C{int(cid)}')
-        ax.set_xlim(0, 1)
-        ax.set_title(f'Cluster {cid}')
-        ax.set_xlabel('Normalized Mean Value')
-
-    plt.suptitle(f'Cluster Profile — {cluster_col}', fontsize=13, fontweight='bold')
+    # Bar chart: median 3 rasio per cluster (skala log karena rentang lebar)
+    cids = sorted(df[cluster_col].unique())
+    fig, ax = plt.subplots(figsize=(max(8, 2.2 * len(cids)), 5))
+    x = np.arange(len(cids)); w = 0.25
+    for k, f in enumerate(feats):
+        ax.bar(x + k * w, [prof.loc[c, f] for c in cids], w, label=f)
+    ax.set_yscale('log')
+    ax.set_xticks(x + w)
+    ax.set_xticklabels([f"C{c}\n{names[c]}" for c in cids], fontsize=8)
+    ax.set_ylabel('Median rasio (skala log)')
+    ax.set_title(f'Profil Rasio Perilaku per Segmen — {cluster_col}')
+    ax.legend(fontsize=8)
     plt.tight_layout()
     if save_plots:
-        fname = f"profile_{cluster_col.lower().replace(' ','_')}.png"
+        fname = f"profile_{cluster_col.lower().replace(' ', '_')}.png"
         plt.savefig(os.path.join(OUTPUT_DIR, fname), dpi=150)
-    plt.show()
-
-    # Cross-check Anomaly (hanya untuk insight, bukan input model)
-    print(f"\n=== Anomaly Rate per Cluster — {cluster_col} ===")
-    print(df_cluster.groupby(cluster_col)['Anomaly'].apply(
-        lambda x: f"{(x==-1).sum()} anomali ({(x==-1).mean()*100:.1f}%)"
-    ))
-    return profile
+    plt.close()
+    return prof, names
 
 
 # ════════════════════════════════════════════════════════════
-# DBSCAN
-# Dijalankan di X_pca (konsisten dengan K-Means dan Hierarchical).
-# eps dicari otomatis agar tidak hardcode — iterasi eps dari
-# 0.30 sampai 2.0 dan pilih yang memenuhi kriteria:
-# 1. Jumlah cluster <= 3
-# 2. Noise points 5%-20%
-# Kalau tidak ada yang memenuhi, pilih yang mendekati 10% noise.
+# DBSCAN — density-based, otomatis mengisolasi outlier sebagai NOISE.
+# Noise points = nasabah dengan perilaku ekstrem → diumpankan ke Phase 4.
+# eps dicari otomatis lewat knee k-distance + target noise 2–15%.
 # ════════════════════════════════════════════════════════════
+def run_dbscan(df, X_scaled, feats, min_samples=DBSCAN_MIN_SAMPLES, save_plots=True):
+    Xv = X_scaled.values
+    nbrs = NearestNeighbors(n_neighbors=min_samples).fit(Xv)
+    dist, _ = nbrs.kneighbors(Xv)
+    kdist = np.sort(dist[:, -1])
 
-def run_dbscan(df_cluster, X, X_pca, pca_final,
-               min_samples=DBSCAN_MIN_SAMPLES, save_plots=True):
+    # Auto-search eps: pilih yang menghasilkan noise paling dekat ke ~5%
+    print("\n=== DBSCAN — pencarian eps otomatis ===")
+    candidates = np.round(np.arange(0.20, 2.01, 0.05), 2)
+    rows = []
+    for eps in candidates:
+        lab = DBSCAN(eps=eps, min_samples=min_samples).fit_predict(Xv)
+        nc = len(set(lab)) - (1 if -1 in lab else 0)
+        nn = int((lab == -1).sum())
+        rows.append((eps, nc, nn, nn / len(lab) * 100))
+    res = pd.DataFrame(rows, columns=['eps', 'n_clusters', 'n_noise', 'pct_noise'])
 
-    # ── K-Distance Graph (X_pca) ────────────────────────────
-    nbrs = NearestNeighbors(n_neighbors=min_samples).fit(X_pca)
-    distances, _ = nbrs.kneighbors(X_pca)
-    distances = np.sort(distances[:, min_samples - 1])
+    good = res[(res['pct_noise'] >= 2) & (res['pct_noise'] <= 15) & (res['n_clusters'] >= 1)]
+    pick = good if not good.empty else res
+    best_eps = float(pick.iloc[(pick['pct_noise'] - 5).abs().argsort().iloc[0]]['eps'])
 
+    db = DBSCAN(eps=best_eps, min_samples=min_samples)
+    df['DBSCAN_Cluster'] = db.fit_predict(Xv)
+    n_clusters = len(set(df['DBSCAN_Cluster'])) - (1 if -1 in df['DBSCAN_Cluster'].values else 0)
+    n_noise = int((df['DBSCAN_Cluster'] == -1).sum())
+    print(res[(res['eps'] * 100 % 25 == 0)].to_string(index=False))
+    print(f"\neps terpilih={best_eps}  → {n_clusters} cluster + "
+          f"{n_noise} noise ({n_noise/len(df)*100:.1f}%)")
+
+    # k-distance plot dengan eps terpilih
     plt.figure(figsize=(10, 4))
-    plt.plot(distances, linewidth=1.5)
-    plt.ylabel(f'{min_samples}-NN Distance')
-    plt.xlabel('Data Points (sorted)')
-    plt.title(f'K-Distance Graph (min_samples={min_samples}) — PCA Space')
-    plt.grid(True, alpha=0.3); plt.tight_layout()
-    if save_plots:
-        plt.savefig(os.path.join(OUTPUT_DIR, 'kdistance_graph.png'), dpi=150)
-    plt.show()
-
-    # ── Auto-search eps terbaik ─────────────────────────────
-    print("=== Iterasi Pencarian eps Optimal ===")
-    eps_candidates = np.arange(0.30, 2.0, 0.01).round(2)
-    results = []
-
-    for eps_test in eps_candidates:
-        db_test   = DBSCAN(eps=eps_test, min_samples=min_samples)
-        labels    = db_test.fit_predict(X_pca)
-        n_clust   = len(set(labels)) - (1 if -1 in labels else 0)
-        n_nois    = (labels == -1).sum()
-        pct_noise = n_nois / len(labels) * 100
-        results.append({'eps': eps_test, 'n_clusters': n_clust,
-                        'n_noise': n_nois, 'pct_noise': round(pct_noise, 1)})
-
-    results_df = pd.DataFrame(results)
-
-    # Kriteria ideal: cluster <= 3, noise 5%-20%
-    good = results_df[
-        (results_df['n_clusters'] <= 3) &
-        (results_df['pct_noise'] >= 5) &
-        (results_df['pct_noise'] <= 20)
-    ]
-
-    if not good.empty:
-        best_row = good.iloc[(good['pct_noise'] - 10).abs().argsort()[:1]]
-        best_eps = best_row['eps'].values[0]
-        print(f"\nKandidat eps yang memenuhi kriteria:")
-        print(good.to_string(index=False))
-        print(f"\n✅ eps terpilih : {best_eps} "
-              f"(clusters: {best_row['n_clusters'].values[0]}, "
-              f"noise: {best_row['pct_noise'].values[0]}%)")
-    else:
-        best_row = results_df.iloc[(results_df['pct_noise'] - 10).abs().argsort()[:1]]
-        best_eps = best_row['eps'].values[0]
-        print(f"\nTidak ada eps yang memenuhi semua kriteria.")
-        print(f"⚠️  Fallback eps : {best_eps} "
-              f"(clusters: {best_row['n_clusters'].values[0]}, "
-              f"noise: {best_row['pct_noise'].values[0]}%)")
-
-    # K-Distance Graph dengan eps terpilih
-    plt.figure(figsize=(10, 4))
-    plt.plot(distances, linewidth=1.5)
-    plt.axhline(y=best_eps, color='red', linestyle='--',
-                alpha=0.8, label=f'eps terpilih = {best_eps}')
-    plt.ylabel(f'{min_samples}-NN Distance')
-    plt.xlabel('Data Points (sorted)')
-    plt.title(f'K-Distance Graph — eps={best_eps} dipilih otomatis')
+    plt.plot(kdist, linewidth=1.5)
+    plt.axhline(best_eps, color='red', linestyle='--', label=f'eps={best_eps}')
+    plt.xlabel('Data points (sorted)'); plt.ylabel(f'{min_samples}-NN distance')
+    plt.title('K-Distance Graph — penentuan eps DBSCAN')
     plt.legend(); plt.grid(True, alpha=0.3); plt.tight_layout()
     if save_plots:
-        plt.savefig(os.path.join(OUTPUT_DIR, 'kdistance_graph_final.png'), dpi=150)
-    plt.show()
+        plt.savefig(os.path.join(OUTPUT_DIR, 'dbscan_kdistance.png'), dpi=150)
+    plt.close()
 
-    # ── Jalankan DBSCAN ─────────────────────────────────────
-    dbscan = DBSCAN(eps=best_eps, min_samples=min_samples)
-    df_cluster['DBSCAN_Cluster'] = dbscan.fit_predict(X_pca)   # ← X_pca
-
-    n_clusters_db = len(set(df_cluster['DBSCAN_Cluster'])) - (
-        1 if -1 in df_cluster['DBSCAN_Cluster'].values else 0
-    )
-    n_noise = (df_cluster['DBSCAN_Cluster'] == -1).sum()
-
-    print(f"\nJumlah cluster DBSCAN : {n_clusters_db}")
-    print(f"Noise points          : {n_noise} ({n_noise/len(df_cluster)*100:.1f}%)")
-    print(df_cluster['DBSCAN_Cluster'].value_counts().sort_index())
-
-    # ── Visualisasi ─────────────────────────────────────────
-    fig, axes = plt.subplots(1, 2, figsize=(16, 6))
-    unique_labels = sorted(df_cluster['DBSCAN_Cluster'].unique())
-    colors = plt.cm.tab10(np.linspace(0, 1, len(unique_labels)))
-
-    for ax, (pc_x, pc_y) in zip(axes, [(0, 1), (0, 2)]):
-        if pc_y >= X_pca.shape[1]:
-            ax.axis('off'); continue
-        for label, color in zip(unique_labels, colors):
-            mask   = df_cluster['DBSCAN_Cluster'] == label
-            name   = 'Noise' if label == -1 else f'Cluster {label}'
-            marker = 'x'     if label == -1 else 'o'
-            size   = 60      if label == -1 else 25
-            alpha  = 0.8     if label == -1 else 0.5
-            ax.scatter(X_pca[mask, pc_x], X_pca[mask, pc_y],
-                       c=[color], label=name, marker=marker,
-                       alpha=alpha, s=size)
-        ax.set_title(f'PC{pc_x+1} vs PC{pc_y+1}')
-        ax.set_xlabel(f'PC{pc_x+1} ({pca_final.explained_variance_ratio_[pc_x]*100:.1f}%)')
-        ax.set_ylabel(f'PC{pc_y+1} ({pca_final.explained_variance_ratio_[pc_y]*100:.1f}%)')
+    # Scatter noise vs cluster
+    fig, axes = plt.subplots(1, 2, figsize=(15, 6))
+    for ax, (i, j) in zip(axes, [(0, 1), (1, 2)]):
+        for lab in sorted(df['DBSCAN_Cluster'].unique()):
+            m = df['DBSCAN_Cluster'] == lab
+            is_noise = (lab == -1)
+            ax.scatter(X_scaled.iloc[m.values, i], X_scaled.iloc[m.values, j],
+                       label='Noise' if is_noise else f'Cluster {lab}',
+                       marker='x' if is_noise else 'o',
+                       s=50 if is_noise else 18,
+                       alpha=0.9 if is_noise else 0.5,
+                       c='red' if is_noise else None)
+        ax.set_xlabel(f'{feats[i]} (z)'); ax.set_ylabel(f'{feats[j]} (z)')
         ax.legend(fontsize=8)
-
-    plt.suptitle(
-        f'DBSCAN (eps={best_eps}, min_samples={min_samples}) — PCA Space\n'
-        f'{n_clusters_db} cluster + {n_noise} noise points ({n_noise/len(df_cluster)*100:.1f}%)',
-        fontsize=12, fontweight='bold'
-    )
+    plt.suptitle(f'DBSCAN (eps={best_eps}) — Noise = perilaku ekstrem '
+                 f'({n_noise} titik, {n_noise/len(df)*100:.1f}%)',
+                 fontsize=12, fontweight='bold')
     plt.tight_layout()
     if save_plots:
-        plt.savefig(os.path.join(OUTPUT_DIR, 'dbscan_pca.png'), dpi=150)
-    plt.show()
+        plt.savefig(os.path.join(OUTPUT_DIR, 'dbscan_scatter.png'), dpi=150)
+    plt.close()
 
-    # ── Profiling noise vs cluster ──────────────────────────
-    # Profiling menggunakan X original
-    print("\n=== DBSCAN Noise Points Profile (X original) ===")
-    noise_profile = df_cluster[
-        df_cluster['DBSCAN_Cluster'] == -1
-    ][X.columns.tolist()].mean().round(3)
-    print(noise_profile.to_string())
-
-    print("\n=== Anomaly Rate — Noise vs Cluster ===")
-    noise_rows   = df_cluster[df_cluster['DBSCAN_Cluster'] == -1]
-    cluster_rows = df_cluster[df_cluster['DBSCAN_Cluster'] != -1]
-    print(f"Noise points : {(noise_rows['Anomaly']==-1).sum()} "
-          f"anomali dari {len(noise_rows)} "
-          f"({(noise_rows['Anomaly']==-1).mean()*100:.1f}%)")
-    print(f"Cluster      : {(cluster_rows['Anomaly']==-1).sum()} "
-          f"anomali dari {len(cluster_rows)} "
-          f"({(cluster_rows['Anomaly']==-1).mean()*100:.1f}%)")
-
-    return df_cluster, n_clusters_db, n_noise, best_eps
+    # Profil noise (nilai asli)
+    if n_noise > 0:
+        print("\n=== Profil DBSCAN Noise (median, nilai asli) ===")
+        noise = df[df['DBSCAN_Cluster'] == -1]
+        print(noise[feats].median().round(3).to_string())
+        if 'Anomaly' in df.columns:
+            print(f"Anomaly rate di noise   : {(noise['Anomaly']==-1).mean()*100:.1f}%")
+            print(f"Anomaly rate di non-noise: "
+                  f"{(df[df['DBSCAN_Cluster']!=-1]['Anomaly']==-1).mean()*100:.1f}%")
+    return df, n_clusters, n_noise, best_eps
 
 
 # ════════════════════════════════════════════════════════════
-# HIERARCHICAL CLUSTERING
-# linkage() dijalankan di X_pca (bukan X original) agar
-# konsisten dengan K-Means dan DBSCAN.
-#
-# Tiga linkage method dibandingkan:
-# - Ward     : meminimalkan peningkatan total WCSS — cluster seimbang
-# - Complete : jarak maksimum antar cluster — sensitif outlier
-# - Average  : rata-rata jarak semua pasangan — kompromi
+# HIERARCHICAL — 3 linkage dibandingkan, potong Ward pada K.
+# Pada n=5000 dendrogram penuh terlalu berat → sampel 1000 baris.
 # ════════════════════════════════════════════════════════════
+def run_hierarchical(df, X_scaled, best_k, save_plots=True):
+    rng = np.random.RandomState(RANDOM_STATE)
+    idx = rng.choice(len(X_scaled), size=min(1000, len(X_scaled)), replace=False)
+    Xs = X_scaled.values[idx]
 
-def run_hierarchical(df_cluster, X, X_pca, pca_final, best_k, save_plots=True):
-    linkage_methods = ['ward', 'complete', 'average']
+    methods = ['ward', 'complete', 'average']
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
-
-    for ax, method in zip(axes, linkage_methods):
-        Z = linkage(X_pca, method=method)   # ← X_pca
+    for ax, m in zip(axes, methods):
+        Z = linkage(Xs, method=m)
         dendrogram(Z, ax=ax, truncate_mode='level', p=5,
                    color_threshold=0.7 * max(Z[:, 2]))
-        ax.set_title(f'Dendrogram — {method.capitalize()} Linkage')
-        ax.set_xlabel('Data Points'); ax.set_ylabel('Distance')
-
-    plt.suptitle('Hierarchical Clustering — 3 Linkage Methods (PCA Space)',
+        ax.set_title(f'Dendrogram — {m.capitalize()} (sampel 1000)')
+        ax.set_xlabel('Data points'); ax.set_ylabel('Distance')
+    plt.suptitle('Hierarchical Clustering — 3 Linkage Methods',
                  fontsize=13, fontweight='bold')
     plt.tight_layout()
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'dendrogram_comparison.png'), dpi=150)
-    plt.show()
+    plt.close()
 
-    # Potong dengan Ward pada K optimal
-    Z_ward = linkage(X_pca, method='ward')   # ← X_pca
-    hier_labels = fcluster(Z_ward, t=best_k, criterion='maxclust')
-    df_cluster['Hierarchical_Cluster'] = hier_labels
-
-    print(f"Distribusi cluster Hierarchical (Ward, K={best_k}):")
-    print(df_cluster['Hierarchical_Cluster'].value_counts().sort_index())
-    return df_cluster
+    # Ward pada seluruh data untuk label final
+    df['Hierarchical_Cluster'] = AgglomerativeClustering(
+        n_clusters=best_k, linkage='ward').fit_predict(X_scaled)
+    sil = silhouette_score(X_scaled, df['Hierarchical_Cluster'])
+    print(f"\n=== Hierarchical (Ward, K={best_k}) — Silhouette={sil:.4f} ===")
+    print(df['Hierarchical_Cluster'].value_counts().sort_index().to_string())
+    print("Catatan linkage: Ward menghasilkan cluster paling seimbang; "
+          "Complete/Average lebih sensitif outlier (cabang panjang terpisah).")
+    return df, sil
 
 
 # ════════════════════════════════════════════════════════════
-# COMPARISON BETWEEN MODELS
-# Silhouette Score dihitung di X_pca agar konsisten dengan
-# space yang digunakan oleh masing-masing algoritma.
+# COMPARISON — silhouette dihitung di ruang yang SAMA (X_scaled)
 # ════════════════════════════════════════════════════════════
-
-def compare_methods(df_cluster, X, X_pca, n_clusters_db, n_noise):
-    # Silhouette dihitung di X_pca — konsisten dengan clustering
-    sil_kmeans = silhouette_score(X_pca, df_cluster['KMeans_Cluster'])
-    sil_hier   = silhouette_score(X_pca, df_cluster['Hierarchical_Cluster'])
-
-    dbscan_valid = df_cluster[df_cluster['DBSCAN_Cluster'] != -1]
-    if dbscan_valid['DBSCAN_Cluster'].nunique() > 1:
-        sil_dbscan = round(silhouette_score(
-            X_pca[df_cluster['DBSCAN_Cluster'] != -1],
-            dbscan_valid['DBSCAN_Cluster']
-        ), 4)
+def compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise):
+    mask = df['DBSCAN_Cluster'] != -1
+    if df.loc[mask, 'DBSCAN_Cluster'].nunique() > 1:
+        sil_db = round(silhouette_score(X_scaled[mask.values],
+                                        df.loc[mask, 'DBSCAN_Cluster']), 4)
     else:
-        sil_dbscan = 'N/A (1 cluster)'
+        sil_db = 'N/A (1 cluster inti + noise)'
 
-    comparison = pd.DataFrame({
-        'Method'          : ['K-Means', 'DBSCAN', 'Hierarchical (Ward)'],
-        'N Clusters'      : [df_cluster['KMeans_Cluster'].nunique(),
-                             n_clusters_db,
-                             df_cluster['Hierarchical_Cluster'].nunique()],
-        'Noise Points'    : [0, n_noise, 0],
-        'Silhouette Score': [round(sil_kmeans, 4), sil_dbscan, round(sil_hier, 4)]
+    comp = pd.DataFrame({
+        'Method':           ['K-Means', 'DBSCAN', 'Hierarchical (Ward)'],
+        'N Clusters':       [df['KMeans_Cluster'].nunique(), n_clusters_db,
+                             df['Hierarchical_Cluster'].nunique()],
+        'Noise Points':     [0, n_noise, 0],
+        'Silhouette':       [round(sil_km, 4), sil_db, round(sil_hier, 4)],
     })
-    print("\n=== Perbandingan Hasil Clustering (dievaluasi di PCA space) ===")
-    print(comparison.to_string(index=False))
-    return comparison
+    print(f"\n{'='*60}")
+    print("  PERBANDINGAN METODE (silhouette di ruang fitur yang sama)")
+    print(f"{'='*60}")
+    print(comp.to_string(index=False))
+    print("\nKesimpulan: K-Means & Hierarchical (Ward) memberi segmen seimbang & "
+          "interpretable. DBSCAN unggul untuk MEMISAHKAN outlier perilaku "
+          "(noise) → dipakai sebagai sinyal awal Phase 4.")
+    return comp
 
-from sklearn.preprocessing import StandardScaler
-
-def prepare_for_pca(X, lower_pct=1, upper_pct=99):
-    """
-    Pipeline sebelum PCA:
-    1. Winsorization — cap nilai ekstrem
-    2. StandardScaler — samakan variance semua fitur ke mean=0, std=1
-    
-    StandardScaler di sini bukan untuk menggantikan scaling di Phase 1,
-    melainkan khusus untuk mempersiapkan data agar PCA tidak bias
-    terhadap fitur dengan variance tinggi.
-    """
-    X_prep = X.copy()
-
-    # Step 1: Cap outliers
-    print("=== Step 1: Winsorization ===")
-    for col in X_prep.columns:
-        lower = np.percentile(X_prep[col], lower_pct)
-        upper = np.percentile(X_prep[col], upper_pct)
-        n_capped = ((X_prep[col] < lower) | (X_prep[col] > upper)).sum()
-        X_prep[col] = X_prep[col].clip(lower, upper)
-        if n_capped > 0:
-            print(f"  {col}: {n_capped} nilai di-cap [{lower:.3f}, {upper:.3f}]")
-
-    # Step 2: StandardScaler — wajib sebelum PCA
-    # Tanpa ini, fitur dengan variance besar akan mendominasi PC1
-    scaler = StandardScaler()
-    X_scaled = pd.DataFrame(
-        scaler.fit_transform(X_prep),
-        columns=X_prep.columns,
-        index=X_prep.index
-    )
-
-    print(f"\n=== Variance Setelah StandardScaler ===")
-    print(X_scaled.var().round(4).to_string())
-    print(f"\nSemua variance = 1.0 → PCA tidak bias ✅")
-
-    return X_scaled
 
 # ════════════════════════════════════════════════════════════
-# MAIN PIPELINE
-# Urutan: Load → PCA → Elbow/Sil → K-Means → DBSCAN → Hier → Compare
-# Semua clustering menggunakan X_pca.
-# Semua profiling menggunakan X original.
+# SAVE — dataset berlabel cluster untuk Phase 4
 # ════════════════════════════════════════════════════════════
+def save_clustered(df, names):
+    df = df.copy()
+    df['KMeans_Segment'] = df['KMeans_Cluster'].map(names)
+    out = os.path.join(DATA_DIR, 'dataset_clustered.csv')
+    df.to_csv(out, index=False)
+    print(f"\n✅ Dataset berlabel cluster tersimpan → {out}")
+    print(f"   Kolom label: KMeans_Cluster, KMeans_Segment, DBSCAN_Cluster, "
+          f"Hierarchical_Cluster")
+    return out
 
+
+# ════════════════════════════════════════════════════════════
+# MAIN
+# ════════════════════════════════════════════════════════════
 def run_clustering(path=None):
     if path is None:
         path = os.path.join(DATA_DIR, 'dataset_clustering.csv')
@@ -584,41 +504,34 @@ def run_clustering(path=None):
     print("=" * 55)
 
     print("\n[1/7] Load data...")
-    df_cluster, X, y_true = load_clustering_data(path)
+    df, feats = load_clustering_data(path)
 
-    # Jalankan ini sebelum apply_pca untuk investigasi
-    print("=== Statistik X setelah scaling ===")
-    print(X.describe().round(3))
-    print("\n=== Variance per fitur ===")
-    print(X.var().sort_values(ascending=False).round(4))
+    print("\n[2/7] Dimensionality analysis (bukti PCA tidak dipakai)...")
+    dimensionality_analysis(df)
 
-    print("\n[2/7] PCA — reduksi dimensi sebelum clustering...")
-    X_prep = prepare_for_pca(X)         
-    X_pca, pca_final, n_components = apply_pca(X_prep)
+    print("\n[3/7] Winsorize + scale fitur rasio...")
+    X_scaled = prepare_features(df, feats)
 
-    print("\n[3/7] Elbow Method & Silhouette Score (di PCA space)...")
-    best_k = find_optimal_k(X_pca)
+    print("\n[4/7] Elbow & Silhouette...")
+    best_k, _ = find_optimal_k(X_scaled)
 
-    print(f"\n[4/7] K-Means (K={best_k}, di PCA space)...")
-    df_cluster, X_tsne = run_kmeans(df_cluster, X, X_pca, pca_final, best_k)
-    profile_clusters(df_cluster, X, 'KMeans_Cluster')
+    print(f"\n[5/7] K-Means (K={best_k})...")
+    df, sil_km = run_kmeans(df, X_scaled, feats, best_k)
+    _, names = profile_clusters(df, feats, 'KMeans_Cluster')
 
-    print("\n[5/7] DBSCAN (auto-eps, di PCA space)...")
-    df_cluster, n_clusters_db, n_noise, best_eps = run_dbscan(
-        df_cluster, X, X_pca, pca_final
-    )
+    print("\n[6/7] DBSCAN + Hierarchical...")
+    df, n_clusters_db, n_noise, _ = run_dbscan(df, X_scaled, feats)
+    df, sil_hier = run_hierarchical(df, X_scaled, best_k)
+    profile_clusters(df, feats, 'Hierarchical_Cluster')
 
-    print(f"\n[6/7] Hierarchical (Ward, K={best_k}, di PCA space)...")
-    df_cluster = run_hierarchical(df_cluster, X, X_pca, pca_final, best_k)
-    profile_clusters(df_cluster, X, 'Hierarchical_Cluster')
-
-    print("\n[7/7] Perbandingan ketiga metode...")
-    compare_methods(df_cluster, X, X_pca, n_clusters_db, n_noise)
+    print("\n[7/7] Perbandingan & simpan...")
+    compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise)
+    save_clustered(df, names)
 
     print("\n" + "=" * 55)
     print("  PHASE 2 SELESAI")
     print("=" * 55)
-    return df_cluster
+    return df
 
 
 if __name__ == '__main__':
