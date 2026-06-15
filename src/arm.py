@@ -389,13 +389,11 @@ ITEM_MEANING_MAP = {
     'Age_Group=Pre-Retirement': 'nasabah pra-pensiun (50–64)',
     'Age_Group=Senior': 'nasabah senior (65+)',
 
-    'Balance_Bucket=Low': 'saldo rendah',
-    'Balance_Bucket=Lower-Mid': 'saldo menengah bawah',
-    'Balance_Bucket=Upper-Mid': 'saldo menengah atas',
-    'Balance_Bucket=High': 'saldo tinggi',
+    'Balance_Bucket=Below-Minimum': 'saldo di bawah minimum (rawan biaya)',
+    'Balance_Bucket=Mass-Market': 'saldo mass-market',
+    'Balance_Bucket=Comfortable': 'saldo nyaman (mendekati affluent)',
 
-    'Transaction_Size=Small': 'transaksi kecil',
-    'Transaction_Size=Medium': 'transaksi menengah',
+    'Transaction_Size=Everyday': 'transaksi harian',
     'Transaction_Size=Large': 'transaksi besar',
     'Transaction_Size=Very Large': 'transaksi sangat besar',
 
@@ -457,7 +455,7 @@ def infer_business_theme(items):
     }
 
     value_items = {
-        'Balance_Bucket=High',
+        'Balance_Bucket=Comfortable',
         'Loan Status=Approved',
         'CC_Utilization_Category=Low'
     }

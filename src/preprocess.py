@@ -455,10 +455,18 @@ def drop_irrelevant_columns(data_set, date_cols):
 #   * Utilisasi kartu → pedoman credit-scoring (FICO): idealnya < 30%;
 #     30–70% sedang, 70–100% tinggi, >100% over-limit (sinyal risiko nyata).
 #   * Suku bunga → tier prime (rendah) / standar / subprime (tinggi).
-#   * Nominal (saldo, transaksi, pinjaman) → tidak ada ambang regulatori
-#     universal untuk dataset sintetis ini, jadi dipakai TIER NOMINAL BULAT
-#     yang tetap & interpretable (mass-market→affluent untuk saldo; kategori
-#     ukuran pinjaman konsumen), bukan kuantil yang bergeser mengikuti data.
+#   * Saldo tabungan → ambang minimum-balance perbankan ritel: ~$1.500 adalah
+#     batas saldo minimum paling umum untuk membebaskan biaya bulanan di bank
+#     besar, dan ~$5.000 adalah ambang saldo rata-rata alternatif (mis. Chase,
+#     Bank of America). Di bawah $1.500 = rawan biaya; ≥$5.000 = mendekati
+#     tier affluent (~$10rb+). Jadi: Below-Minimum / Mass-Market / Comfortable.
+#   * Pinjaman → bracket ukuran pinjaman konsumen: pinjaman tanpa agunan
+#     biasanya dibatasi ~$35rb–$50rb; <$5rb = small-dollar; di atas ~$35rb
+#     umumnya beragunan (auto/mortgage). Jadi: Small/Medium/Large/Very Large.
+#   * Transaksi → tidak ada ambang regulatori di bawah $10.000 (batas CTR/
+#     Currency Transaction Report justru $10rb, di ATAS nilai maksimum data
+#     ini ~$5rb). Maka dipakai tier interpretable harian/besar/sangat besar
+#     (ini fitur paling lemah secara domain — diakui jujur).
 
 # Ambang umur (tahun, batas atas inklusif) → tahap hidup finansial
 AGE_BINS   = [17, 24, 34, 49, 64, np.inf]
@@ -476,22 +484,22 @@ def bin_features(data_clean):
     data_clean['Age_Group'] = pd.cut(
         data_clean['Age'], bins=AGE_BINS, labels=AGE_LABELS)
 
-    # Saldo tabungan → tier relationship ritel (mass-market → affluent)
+    # Saldo → ambang minimum-balance ritel ($1.500 fee-waiver, $5.000 avg-balance)
     data_clean['Balance_Bucket'] = pd.cut(
         data_clean['Account Balance'],
-        bins=[-np.inf, 2000, 5000, 8000, np.inf],
-        labels=['Low', 'Lower-Mid', 'Upper-Mid', 'High'])
+        bins=[-np.inf, 1500, 5000, np.inf],
+        labels=['Below-Minimum', 'Mass-Market', 'Comfortable'])
 
-    # Nominal transaksi → ukuran transaksi ritel
+    # Transaksi → tier interpretable (tak ada ambang regulatori < $10rb/CTR)
     data_clean['Transaction_Size'] = pd.cut(
         data_clean['Transaction Amount'],
-        bins=[-np.inf, 1000, 2500, 4000, np.inf],
-        labels=['Small', 'Medium', 'Large', 'Very Large'])
+        bins=[-np.inf, 1000, 3000, np.inf],
+        labels=['Everyday', 'Large', 'Very Large'])
 
-    # Nominal pinjaman → kategori ukuran pinjaman konsumen
+    # Pinjaman → bracket ukuran pinjaman konsumen (cap tanpa agunan ~$35rb)
     data_clean['Loan_Size'] = pd.cut(
         data_clean['Loan Amount'],
-        bins=[-np.inf, 5000, 15000, 35000, np.inf],
+        bins=[-np.inf, 5000, 20000, 35000, np.inf],
         labels=['Small', 'Medium', 'Large', 'Very Large'])
 
     # Suku bunga → tier prime / standar / subprime
