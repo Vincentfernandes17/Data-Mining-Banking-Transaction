@@ -18,7 +18,7 @@ Analisis Phase 1 menemukan fakta penting tentang dataset ini:
 Dua konsekuensi yang menentukan desain:
 
 1. **PCA tidak dipakai sebagai reduksi.** Tanpa redundansi antar fitur, setiap
-   komponen PCA hanya menangkap ~1/n variance (scree plot **datar**), sehingga
+   komponen PCA hanya menangkap ≈1/n variance (scree plot **datar**), sehingga
    "reduksi" 11→9 fitur tidak ada gunanya. PCA tetap dijalankan **sekali** hanya
    untuk *membuktikan* hal ini (`outputs/phase2/pca_why_not_used.png`).
 
@@ -29,7 +29,7 @@ Dua konsekuensi yang menentukan desain:
    - `Transaction_to_Balance_Ratio` = transaksi / saldo → intensitas likuiditas
    - `Loan_to_Balance_Ratio` = pinjaman / saldo → leverage utang
 
-   **Dampak:** Silhouette Score naik dari **~0.07** (fitur mentah) → **~0.57**
+   **Dampak:** Silhouette Score naik dari **≈0.07** (fitur mentah) → **≈0.57**
    (rasio perilaku, K-Means K=3).
 
 ---
@@ -47,9 +47,9 @@ Dua konsekuensi yang menentukan desain:
 
 | Segmen | % | Ciri (median) |
 |--------|---|---------------|
-| **Mainstream / Balanced** | ~80% | Semua rasio sehat, saldo & limit tinggi |
-| **Credit-Stressed / Over-Limit** | ~13% | Saldo kartu **1.7× limit**, limit rendah → tekanan kredit |
-| **Liquidity-Stressed / High-Leverage** | ~7% | Transaksi **5×** & pinjaman **50×+** saldo; saldo sangat rendah |
+| **Mainstream / Balanced** | ≈80% | Semua rasio sehat, saldo & limit tinggi |
+| **Credit-Stressed / Over-Limit** | ≈13% | Saldo kartu **1.7× limit**, limit rendah → tekanan kredit |
+| **Liquidity-Stressed / High-Leverage** | ≈7% | Transaksi **5×** & pinjaman **50×+** saldo; saldo sangat rendah |
 
 ---
 
@@ -123,7 +123,7 @@ Karena dataset bersifat sintetis dengan atribut yang sebagian besar independen:
 
 - **Clustering** menjadi bermakna **hanya setelah** feature engineering rasio
   perilaku — ini didokumentasikan, bukan disembunyikan.
-- **Association rules** memiliki lift moderat (~1.5) karena atribut kategorikal
+- **Association rules** memiliki lift moderat (≈1.5) karena atribut kategorikal
   hampir independen — ini batas data, dan rule terkuat tetap dilaporkan.
 - **Anomaly** berbasis perilaku finansial nyata; label `Anomaly` bawaan dataset
   hanya dipakai untuk validasi akhir (bukan target), sesuai aturan proyek.

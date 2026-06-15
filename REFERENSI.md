@@ -43,7 +43,7 @@ Ini membela langsung kritik dosen ("jangan pukul rata qcut").
 4. **[PAPER]** Agarwal, S., Driscoll, J. C., Gabaix, X., & Laibson, D. (2009).
    *The Age of Reason: Financial Decisions over the Life-Cycle and Implications
    for Regulation.* Brookings Papers on Economic Activity, 2009(2), 51–117.
-   → Kecakapan finansial berbentuk **hump-shaped**, puncak ~usia 53; muda & tua
+   → Kecakapan finansial berbentuk **hump-shaped**, puncak ≈usia 53; muda & tua
    membayar bunga/fee lebih tinggi → membenarkan batas 35–49 (puncak) dan 50–64
    (mulai menurun).
 
@@ -75,10 +75,10 @@ Ini membela langsung kritik dosen ("jangan pukul rata qcut").
 ## 4. Saldo Tabungan (Below-Minimum <$1.5rb / Mass-Market / Comfortable ≥$5rb)
 
 9. **[INDUSTRI/REGULASI]** Ambang minimum-balance & fee-waiver perbankan ritel
-   AS — ~$1.500 saldo harian atau ~$5.000 saldo rata-rata umum dipakai bank
+   AS — ≈$1.500 saldo harian atau ≈$5.000 saldo rata-rata umum dipakai bank
    besar (mis. Chase Total Checking, Bank of America) untuk membebaskan biaya
    bulanan. (Disclosure produk bank; ringkasan CFPB tentang biaya rekening).
-   → Below-Minimum = rawan biaya; Comfortable = mendekati ambang affluent (~$10rb+).
+   → Below-Minimum = rawan biaya; Comfortable = mendekati ambang affluent (≈$10rb+).
 
 ---
 
@@ -87,11 +87,11 @@ Ini membela langsung kritik dosen ("jangan pukul rata qcut").
 10. **[REGULASI]** Consumer Financial Protection Bureau (2017). *Payday, Vehicle
     Title, and Certain High-Cost Installment Loans* ("Small-Dollar Rule"),
     12 CFR Part 1041. → Mendefinisikan pinjaman small-dollar (lini kredit tipikal
-    ~$500); membenarkan kategori "Small".
+    ≈$500); membenarkan kategori "Small".
 11. **[PAPER]** Adams, W., Einav, L., & Levin, J. (2009). *Liquidity Constraints
     and Imperfect Information in Subprime Lending.* American Economic Review,
     99(1), 49–84. → Hubungan ukuran pinjaman, risiko, dan informasi pada kredit
-    konsumen. (Batas ~$35rb = plafon umum pinjaman tanpa agunan; di atasnya
+    konsumen. (Batas ≈$35rb = plafon umum pinjaman tanpa agunan; di atasnya
     biasanya beragunan.)
 
 ---
@@ -107,7 +107,7 @@ Ini membela langsung kritik dosen ("jangan pukul rata qcut").
     Journal of Quantitative Criminology (online first). arXiv:2309.12704.
     → Bukti empiris (data bank Denmark) bahwa pelaku memecah transaksi tepat di
     bawah ambang nominal → membenarkan bahwa **binning berbasis nominal transaksi
-    bermakna**. Catatan jujur: karena transaksi maksimum di dataset (~$5rb) di
+    bermakna**. Catatan jujur: karena transaksi maksimum di dataset (≈$5rb) di
     bawah CTR $10rb, batas pasti sub-$10rb tetap interpretable.
 
 ---

@@ -74,11 +74,11 @@ tetap berbasis domain** sehingga kategori selalu konsisten & interpretable:
 
 | Variabel | Ambang | Dasar |
 |----------|--------|-------|
-| **Umur** | 18–24 / 25–34 / 35–49 / 50–64 / 65+ (Young Adult → Senior) | Tahap hidup finansial — *Life-Cycle Hypothesis* (Modigliani & Brumberg, 1954) dan temuan *hump-shaped* kecakapan finansial yang memuncak ~usia 53 (Agarwal, Driscoll, Gabaix & Laibson, 2009, *"The Age of Reason"*) |
+| **Umur** | 18–24 / 25–34 / 35–49 / 50–64 / 65+ (Young Adult → Senior) | Tahap hidup finansial — *Life-Cycle Hypothesis* (Modigliani & Brumberg, 1954) dan temuan *hump-shaped* kecakapan finansial yang memuncak ≈usia 53 (Agarwal, Driscoll, Gabaix & Laibson, 2009, *"The Age of Reason"*) |
 | **Utilisasi kartu** | <30% / 30–70% / 70–100% / >100% | Pedoman credit-scoring (FICO): jaga utilisasi <30%; >100% = over-limit (sinyal risiko) |
 | **Suku bunga** | <4% / 4–7% / >7% | Reg Z/HMDA "higher-priced" (APR ≥ APOR+1,5pp) & HOEPA; subprime (Demyanyk & Van Hemert, 2011) |
-| **Saldo** | <$1.500 / $1.5–5rb / ≥$5rb (Below-Minimum/Mass-Market/Comfortable) | Ambang minimum-balance ritel: ~$1.500 pembebasan biaya, ~$5.000 saldo rata-rata (Chase, BofA) |
-| **Pinjaman** | <$5rb / $5–20rb / $20–35rb / >$35rb | CFPB Small-Dollar Rule (12 CFR 1041); kredit konsumen (Adams, Einav & Levin, 2009); cap tanpa agunan ~$35rb |
+| **Saldo** | <$1.500 / $1.5–5rb / ≥$5rb (Below-Minimum/Mass-Market/Comfortable) | Ambang minimum-balance ritel: ≈$1.500 pembebasan biaya, ≈$5.000 saldo rata-rata (Chase, BofA) |
+| **Pinjaman** | <$5rb / $5–20rb / $20–35rb / >$35rb | CFPB Small-Dollar Rule (12 CFR 1041); kredit konsumen (Adams, Einav & Levin, 2009); cap tanpa agunan ≈$35rb |
 | **Transaksi** | <$1rb / $1–3rb / >$3rb | Ambang pemantauan AML: CTR $10rb (BSA), *structuring* (Jensen, Ferwerda & Wewer, 2025). Batas sub-$10rb interpretable |
 
 > Daftar pustaka lengkap (peer-reviewed/regulasi/industri) untuk semua ambang
@@ -94,7 +94,7 @@ tetap berbasis domain** sehingga kategori selalu konsisten & interpretable:
 
 Reduksi dimensi dengan PCA hanya berguna jika fitur saling tumpang-tindih
 (redundan). Karena fitur di dataset ini independen, **setiap komponen PCA hanya
-menangkap ~11% variance** (1 dari 9) — grafik scree-nya **datar**. Untuk mencapai
+menangkap ≈11% variance** (1 dari 9) — grafik scree-nya **datar**. Untuk mencapai
 80% variance dibutuhkan 8 dari 9 komponen; "reduksi" 11→9 tidak ada gunanya.
 
 Kami tetap menjalankan PCA **satu kali** semata-mata untuk **membuktikan** hal ini
@@ -102,7 +102,7 @@ secara visual (`outputs/phase2/pca_why_not_used.png`), lalu **membuangnya** dan
 melakukan clustering langsung pada 3 rasio perilaku.
 
 **Dampak terukur:** Silhouette Score (ukuran kualitas cluster, 0–1) melonjak dari
-**~0,07** (fitur mentah, praktis tanpa struktur) menjadi **~0,57** (rasio
+**≈0,07** (fitur mentah, praktis tanpa struktur) menjadi **≈0,57** (rasio
 perilaku). Ini perbedaan antara "tidak ada cluster" dan "cluster yang jelas".
 
 ### 3.2 Tiga Algoritma, Satu Kesimpulan
@@ -154,7 +154,7 @@ Contoh aturan dengan interpretasi:
 | 10 | Visa + pinjaman sangat besar + transaksi besar | utilisasi kartu sedang | 1,47 |
 
 **Kejujuran metodologis:** karena atribut kategorikal di dataset ini hampir
-independen (lihat Fase 1), nilai **Lift tertinggi pun hanya ~1,5** — ini *batas
+independen (lihat Fase 1), nilai **Lift tertinggi pun hanya ≈1,5** — ini *batas
 data*, bukan kekurangan analisis. Kami melaporkan pola terkuat yang ada, sambil
 menegaskan bahwa pola ini sebaiknya divalidasi pada data perbankan riil sebelum
 dijadikan kebijakan.
@@ -228,7 +228,7 @@ label sintetis.
 
 ## 7. Jawaban untuk Mining Expo
 
-- **Aturan paling mengejutkan?** Bahwa lift tertinggi pun hanya ~1,5 — temuan
+- **Aturan paling mengejutkan?** Bahwa lift tertinggi pun hanya ≈1,5 — temuan
   "mengejutkan"-nya justru adalah betapa **independen**-nya atribut dataset ini,
   yang memaksa kami berpindah dari angka mentah ke rasio perilaku.
 - **Metode clustering paling interpretable?** **K-Means (K=3)**: tiga segmen
