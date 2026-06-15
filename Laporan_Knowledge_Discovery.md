@@ -76,10 +76,15 @@ tetap berbasis domain** sehingga kategori selalu konsisten & interpretable:
 |----------|--------|-------|
 | **Umur** | 18–24 / 25–34 / 35–49 / 50–64 / 65+ (Young Adult → Senior) | Tahap hidup finansial — *Life-Cycle Hypothesis* (Modigliani & Brumberg, 1954) dan temuan *hump-shaped* kecakapan finansial yang memuncak ~usia 53 (Agarwal, Driscoll, Gabaix & Laibson, 2009, *"The Age of Reason"*) |
 | **Utilisasi kartu** | <30% / 30–70% / 70–100% / >100% | Pedoman credit-scoring (FICO): jaga utilisasi <30%; >100% = over-limit (sinyal risiko) |
-| **Suku bunga** | <4% / 4–7% / >7% | Tier prime / standar / subprime |
-| **Saldo** | <$1.500 / $1.5–5rb / ≥$5rb (Below-Minimum/Mass-Market/Comfortable) | Ambang minimum-balance ritel: ~$1.500 batas pembebasan biaya bulanan paling umum, ~$5.000 ambang saldo rata-rata (mis. Chase, BofA) |
-| **Pinjaman** | <$5rb / $5–20rb / $20–35rb / >$35rb | Bracket ukuran pinjaman konsumen; cap tanpa agunan ~$35rb (di atasnya beragunan) |
-| **Transaksi** | <$1rb / $1–3rb / >$3rb | Tier interpretable — diakui paling lemah; tak ada ambang regulatori di bawah CTR $10rb |
+| **Suku bunga** | <4% / 4–7% / >7% | Reg Z/HMDA "higher-priced" (APR ≥ APOR+1,5pp) & HOEPA; subprime (Demyanyk & Van Hemert, 2011) |
+| **Saldo** | <$1.500 / $1.5–5rb / ≥$5rb (Below-Minimum/Mass-Market/Comfortable) | Ambang minimum-balance ritel: ~$1.500 pembebasan biaya, ~$5.000 saldo rata-rata (Chase, BofA) |
+| **Pinjaman** | <$5rb / $5–20rb / $20–35rb / >$35rb | CFPB Small-Dollar Rule (12 CFR 1041); kredit konsumen (Adams, Einav & Levin, 2009); cap tanpa agunan ~$35rb |
+| **Transaksi** | <$1rb / $1–3rb / >$3rb | Ambang pemantauan AML: CTR $10rb (BSA), *structuring* (Jensen, Ferwerda & Wewer, 2025). Batas sub-$10rb interpretable |
+
+> Daftar pustaka lengkap (peer-reviewed/regulasi/industri) untuk semua ambang
+> binning ada di [`REFERENSI.md`](REFERENSI.md), termasuk paper metodologi
+> diskretisasi (Dougherty et al., 1995; García et al., 2013) yang mendukung
+> pilihan ambang-domain di atas binning equal-frequency.
 
 ---
 

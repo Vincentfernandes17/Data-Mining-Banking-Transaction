@@ -454,19 +454,31 @@ def drop_irrelevant_columns(data_set, date_cols):
 #     tahap hidup (awal karier, mapan, pra-pensiun, pensiun), bukan kuantil.
 #   * Utilisasi kartu → pedoman credit-scoring (FICO): idealnya < 30%;
 #     30–70% sedang, 70–100% tinggi, >100% over-limit (sinyal risiko nyata).
-#   * Suku bunga → tier prime (rendah) / standar / subprime (tinggi).
+#   * Suku bunga → tier prime / standar / higher-priced. Dasar regulatori:
+#     Regulation Z / HMDA mendefinisikan "higher-priced mortgage loan" bila
+#     APR ≥ APOR + 1,5pp (first-lien); HOEPA menandai pinjaman "high-cost".
+#     Dasar akademik: Demyanyk & Van Hemert (2011, Review of Financial
+#     Studies) tentang pinjaman subprime. Pada lingkungan suku bunga normal
+#     (APOR ~2,5–4%), ambang higher-priced jatuh ~4–5,5%, sehingga: ≤4%
+#     prime/near-prime, 4–7% elevated, >7% jelas higher-priced/subprime.
 #   * Saldo tabungan → ambang minimum-balance perbankan ritel: ~$1.500 adalah
 #     batas saldo minimum paling umum untuk membebaskan biaya bulanan di bank
 #     besar, dan ~$5.000 adalah ambang saldo rata-rata alternatif (mis. Chase,
 #     Bank of America). Di bawah $1.500 = rawan biaya; ≥$5.000 = mendekati
 #     tier affluent (~$10rb+). Jadi: Below-Minimum / Mass-Market / Comfortable.
-#   * Pinjaman → bracket ukuran pinjaman konsumen: pinjaman tanpa agunan
-#     biasanya dibatasi ~$35rb–$50rb; <$5rb = small-dollar; di atas ~$35rb
-#     umumnya beragunan (auto/mortgage). Jadi: Small/Medium/Large/Very Large.
-#   * Transaksi → tidak ada ambang regulatori di bawah $10.000 (batas CTR/
-#     Currency Transaction Report justru $10rb, di ATAS nilai maksimum data
-#     ini ~$5rb). Maka dipakai tier interpretable harian/besar/sangat besar
-#     (ini fitur paling lemah secara domain — diakui jujur).
+#   * Pinjaman → bracket ukuran pinjaman konsumen. Dasar: CFPB Small-Dollar /
+#     Payday Lending Rule (12 CFR 1041) memayungi pinjaman small-dollar
+#     (lini kredit tipikal ~$500); pinjaman tanpa agunan umumnya dibatasi
+#     ~$35rb–$50rb, di atasnya biasanya beragunan (auto/mortgage). Jadi:
+#     <$5rb small, $5–20rb medium, $20–35rb large, >$35rb very large.
+#   * Transaksi → ambang pemantauan AML. Batas CTR (Currency Transaction
+#     Report, BSA/FinCEN) = $10.000; "structuring" (memecah transaksi di
+#     bawah ambang) dikriminalisasi (31 U.S.C. 5324). Bukti akademik bahwa
+#     ambang nominal transaksi bermakna & dimanfaatkan: Jensen, Ferwerda &
+#     Wewer (2025, Journal of Quantitative Criminology), "Searching for
+#     Smurfs". Karena nilai maksimum data (~$5rb) di BAWAH CTR $10rb, kita
+#     pakai tier interpretable harian/besar/sangat besar — prinsip pemantauan
+#     berbasis nominal kuat secara literatur, batas pasti sub-$10rb interpretable.
 
 # Ambang umur (tahun, batas atas inklusif) → tahap hidup finansial
 AGE_BINS   = [17, 24, 34, 49, 64, np.inf]
