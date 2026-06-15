@@ -66,6 +66,19 @@ Berbeda dari angka mentah, rasio ini memiliki **struktur nyata** (skewness 2–7
 sebagian besar nasabah berkumpul di nilai rendah, sebagian kecil memanjang ke
 nilai ekstrem. Justru di sinilah segmen dan risiko bersembunyi.
 
+**Diskretisasi (binning) berbasis domain, bukan kuantil.**
+Untuk Association Rule Mining, variabel kontinu diubah jadi kategori. Kami
+**tidak** memakai pembagian "rata" (equal-frequency/equal-width) yang batasnya
+bergeser mengikuti data dan tak bermakna. Sebagai gantinya, dipakai **ambang
+tetap berbasis domain** sehingga kategori selalu konsisten & interpretable:
+
+| Variabel | Ambang | Dasar |
+|----------|--------|-------|
+| **Umur** | 18–24 / 25–34 / 35–49 / 50–64 / 65+ (Young Adult → Senior) | Tahap hidup finansial — *Life-Cycle Hypothesis* (Modigliani & Brumberg, 1954) dan temuan *hump-shaped* kecakapan finansial yang memuncak ~usia 53 (Agarwal, Driscoll, Gabaix & Laibson, 2009, *"The Age of Reason"*) |
+| **Utilisasi kartu** | <30% / 30–70% / 70–100% / >100% | Pedoman credit-scoring (FICO): jaga utilisasi <30%; >100% = over-limit (sinyal risiko) |
+| **Suku bunga** | <4% / 4–7% / >7% | Tier prime / standar / subprime |
+| **Saldo, transaksi, pinjaman** | tier nominal bulat tetap | Mass-market→affluent; kategori ukuran pinjaman konsumen (tidak ada ambang regulatori universal untuk nominal sintetis) |
+
 ---
 
 ## 3. Fase 2 — Segmentasi via Clustering

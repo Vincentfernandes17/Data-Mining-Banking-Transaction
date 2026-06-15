@@ -235,10 +235,13 @@ def auto_tune_support(df_encoded, target_rules=10,
                       min_confidence=MIN_CONFIDENCE,
                       min_lift=MIN_LIFT):
     """
-    Iterasi min_support dari start_support turun ke 0.01
-    hingga didapat minimal target_rules rules.
+    Iterasi min_support dari start_support turun hingga 0.005 sampai didapat
+    minimal target_rules rules. Karena binning sekarang memakai ambang DOMAIN
+    tetap (bukan kuantil), sebagian kategori lebih kecil sehingga itemset lebih
+    jarang — wajar bila support optimal turun ke ~0.0075. Kualitas TETAP dijaga
+    via min_lift & min_confidence (yang TIDAK dilonggarkan).
     """
-    support_values = np.arange(start_support, 0.009, -0.0025).round(3)
+    support_values = np.arange(start_support, 0.004, -0.0025).round(4)
 
     for sup in support_values:
         print(f"\nMencoba min_support = {sup}...")
@@ -261,14 +264,14 @@ def auto_tune_support(df_encoded, target_rules=10,
 
     print("⚠️  Tidak bisa mencapai target rules. Pakai min_support terkecil.")
     frequent_itemsets = apriori(
-        df_encoded, min_support=0.01,
+        df_encoded, min_support=0.005,
         use_colnames=True, max_len=4
     )
     rules = association_rules(
         frequent_itemsets, metric='lift', min_threshold=min_lift
     )
     rules = rules[rules['confidence'] >= min_confidence]
-    return frequent_itemsets, rules, 0.01
+    return frequent_itemsets, rules, 0.005
 
 
 # ════════════════════════════════════════════════════════════
@@ -380,10 +383,11 @@ def export_rules(rules, top_n=20):
 # ════════════════════════════════════════════════════════════
 
 ITEM_MEANING_MAP = {
-    'Age_Group=Young': 'nasabah usia muda',
-    'Age_Group=Adult': 'nasabah dewasa',
-    'Age_Group=Middle-aged': 'nasabah paruh baya',
-    'Age_Group=Senior': 'nasabah senior',
+    'Age_Group=Young Adult': 'nasabah usia muda (18–24)',
+    'Age_Group=Early Career': 'nasabah awal karier (25–34)',
+    'Age_Group=Established': 'nasabah mapan (35–49)',
+    'Age_Group=Pre-Retirement': 'nasabah pra-pensiun (50–64)',
+    'Age_Group=Senior': 'nasabah senior (65+)',
 
     'Balance_Bucket=Low': 'saldo rendah',
     'Balance_Bucket=Lower-Mid': 'saldo menengah bawah',

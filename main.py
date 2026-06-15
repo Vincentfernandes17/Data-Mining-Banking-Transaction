@@ -4,8 +4,9 @@ main.py — Entry Point Pipeline Data Mining Banking
 Cara pakai di VSCode terminal:
     python main.py --phase 1    # Phase 1: Preprocessing
     python main.py --phase 2    # Phase 2: Clustering
-    python main.py --phase 3    # Phase 2: ARM
-    python main.py --phase 4    # Phase 2: Anomaly
+    python main.py --phase 3    # Phase 3: ARM
+    python main.py --phase 4    # Phase 4: Anomaly
+    python main.py --phase 5    # Phase 4: Visualization
     python main.py --phase all  # Semua phase berurutan
 """
 
@@ -67,6 +68,7 @@ def main(phase: str):
         print("="*55 + "\n")
         from src.dashboard import run_dashboard
         run_dashboard()
+        
     elif phase == 'all':
         print("\n[Phase 5] Dashboard tidak diluncurkan otomatis pada mode 'all' "
               "(server blocking). Jalankan: python main.py --phase 5")

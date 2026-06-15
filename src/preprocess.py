@@ -435,47 +435,85 @@ def drop_irrelevant_columns(data_set, date_cols):
 # BINNING
 # Pada tahap ini kita mengubah data kontinu ke data kategorikal
 # yang diperlukan pada fase-fase selanjutnya (terutama ARM/Apriori).
-# Menggunakan quantile-based binning (qcut) agar setiap bin memiliki
-# jumlah data yang relatif seimbang.
+# Kita memakai AMBANG DOMAIN TETAP (fixed thresholds), BUKAN quantile
+# (equal-frequency) maupun equal-width. Alasannya:
+#   - Quantile/equal-width bersifat data-dependent: batas bin bergeser bila
+#     data berubah, dan kategori tidak punya makna intrinsik ("Senior" bisa
+#     berarti usia berbeda tiap dataset).
+#   - Ambang domain tetap bersifat REPRODUCIBLE & INTERPRETABLE: "Senior"
+#     selalu 65+, "Over-Limit" selalu >100% limit, apa pun datanya.
+#
+# REFERENSI AMBANG:
+#   * Umur → tahap hidup finansial (life-stage). Dasar teori: Life-Cycle
+#     Hypothesis (Modigliani & Brumberg, 1954) — pola pinjam saat muda,
+#     menabung saat paruh baya, dis-saving saat tua. Bukti empiris:
+#     Agarwal, Driscoll, Gabaix & Laibson (2009), "The Age of Reason:
+#     Financial Decisions over the Life-Cycle", Brookings Papers — kecakapan
+#     finansial berbentuk hump-shaped, puncak ~usia 53; kelompok muda & tua
+#     membayar bunga/fee lebih tinggi. Maka umur dipotong di transisi
+#     tahap hidup (awal karier, mapan, pra-pensiun, pensiun), bukan kuantil.
+#   * Utilisasi kartu → pedoman credit-scoring (FICO): idealnya < 30%;
+#     30–70% sedang, 70–100% tinggi, >100% over-limit (sinyal risiko nyata).
+#   * Suku bunga → tier prime (rendah) / standar / subprime (tinggi).
+#   * Nominal (saldo, transaksi, pinjaman) → tidak ada ambang regulatori
+#     universal untuk dataset sintetis ini, jadi dipakai TIER NOMINAL BULAT
+#     yang tetap & interpretable (mass-market→affluent untuk saldo; kategori
+#     ukuran pinjaman konsumen), bukan kuantil yang bergeser mengikuti data.
 
-def _safe_qcut(series, labels):
-    ranked = series.rank(method='first')
-    try:
-        return pd.qcut(ranked, q=len(labels), labels=labels, precision=2)
-    except ValueError:
-        n_bins = min(len(labels), ranked.nunique())
-        if n_bins < 2:
-            return pd.Series([labels[0]] * len(series), index=series.index)
-        return pd.qcut(ranked, q=n_bins, labels=labels[:n_bins], precision=2)
+# Ambang umur (tahun, batas atas inklusif) → tahap hidup finansial
+AGE_BINS   = [17, 24, 34, 49, 64, np.inf]
+AGE_LABELS = ['Young Adult',     # 18–24: pelajar / awal kerja, aset rendah
+              'Early Career',    # 25–34: pembentukan keluarga, mulai KPR/kredit
+              'Established',      # 35–49: pendapatan menanjak, mendekati puncak
+              'Pre-Retirement',  # 50–64: puncak kekayaan, deleveraging
+              'Senior']          # 65+  : pensiun, pendapatan tetap
 
 
 def bin_features(data_clean):
     data_clean = data_clean.copy()
 
-    data_clean['Age_Group']      = _safe_qcut(data_clean['Age'],
-                                              ['Young','Adult','Middle-aged','Senior'])
-    data_clean['Balance_Bucket'] = _safe_qcut(data_clean['Account Balance'],
-                                              ['Low','Lower-Mid','Upper-Mid','High'])
-    data_clean['Transaction_Size'] = _safe_qcut(data_clean['Transaction Amount'],
-                                                ['Small','Medium','Large','Very Large'])
-    data_clean['Loan_Size']      = _safe_qcut(data_clean['Loan Amount'],
-                                              ['Small','Medium','Large','Very Large'])
-    data_clean['Rate_Category']  = _safe_qcut(data_clean['Interest Rate'],
-                                              ['Low','Moderate','High'])
-    # CC_Utilization menggunakan domain-based cut karena ada threshold
-    # industri kartu kredit yang bermakna (30%, 70%, 100%). Karena banyak
-    # nasabah pada dataset ini overlimit (>100%), kategori 'Over-Limit'
-    # WAJIB ada agar sinyal tekanan kredit tidak hilang.
+    # Umur → tahap hidup finansial (lihat referensi paper di atas)
+    data_clean['Age_Group'] = pd.cut(
+        data_clean['Age'], bins=AGE_BINS, labels=AGE_LABELS)
+
+    # Saldo tabungan → tier relationship ritel (mass-market → affluent)
+    data_clean['Balance_Bucket'] = pd.cut(
+        data_clean['Account Balance'],
+        bins=[-np.inf, 2000, 5000, 8000, np.inf],
+        labels=['Low', 'Lower-Mid', 'Upper-Mid', 'High'])
+
+    # Nominal transaksi → ukuran transaksi ritel
+    data_clean['Transaction_Size'] = pd.cut(
+        data_clean['Transaction Amount'],
+        bins=[-np.inf, 1000, 2500, 4000, np.inf],
+        labels=['Small', 'Medium', 'Large', 'Very Large'])
+
+    # Nominal pinjaman → kategori ukuran pinjaman konsumen
+    data_clean['Loan_Size'] = pd.cut(
+        data_clean['Loan Amount'],
+        bins=[-np.inf, 5000, 15000, 35000, np.inf],
+        labels=['Small', 'Medium', 'Large', 'Very Large'])
+
+    # Suku bunga → tier prime / standar / subprime
+    data_clean['Rate_Category'] = pd.cut(
+        data_clean['Interest Rate'],
+        bins=[-np.inf, 4, 7, np.inf],
+        labels=['Low', 'Moderate', 'High'])
+
+    # Utilisasi kartu kredit → pedoman credit-scoring FICO (30/70/100%).
+    # 'Over-Limit' (>100%) wajib ada agar sinyal tekanan kredit tidak hilang.
     data_clean['CC_Utilization_Category'] = pd.cut(
         data_clean['CC_Utilization'],
         bins=[-np.inf, 0.30, 0.70, 1.00, np.inf],
-        labels=['Low','Moderate','High','Over-Limit'],
-        include_lowest=True
-    )
+        labels=['Low', 'Moderate', 'High', 'Over-Limit'],
+        include_lowest=True)
 
-    print("Binning selesai!")
-    for col in ['Age_Group','Balance_Bucket','CC_Utilization_Category']:
-        print(f"\n{col}:"); print(data_clean[col].value_counts(dropna=False))
+    print("Binning (ambang domain tetap) selesai!")
+    for col in ['Age_Group', 'Balance_Bucket', 'Transaction_Size',
+                'Loan_Size', 'Rate_Category', 'CC_Utilization_Category']:
+        vc = data_clean[col].value_counts(dropna=False).reindex(
+            data_clean[col].cat.categories)
+        print(f"\n{col}:"); print(vc.to_string())
 
     return data_clean
 
