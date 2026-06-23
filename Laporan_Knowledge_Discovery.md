@@ -144,20 +144,28 @@ bisnis — dan silhouette-nya tetap tinggi (0,57).
 menjalankan algoritma **Apriori** untuk menemukan pola "jika–maka" antar atribut,
 dinilai dengan **Support, Confidence, dan Lift**.
 
-Kami menemukan **15 aturan non-trivial** (Lift 1,47–1,59; Confidence ≥ 0,50).
-Contoh aturan dengan interpretasi:
+Kami menemukan **82 aturan non-trivial** (Lift 1,40–1,66; Confidence 0,50–0,76;
+Support ≥ 0,01 ≈ 50 nasabah). Algoritma **Apriori** dibiarkan menentukan panjang
+itemset sendiri (tanpa batas buatan), lalu disaring agar hanya menyisakan aturan
+yang kuat & non-trivial. Contoh aturan (dipilih yang paling actionable, bukan
+sekadar Lift tertinggi):
 
-| # | JIKA | MAKA | Lift |
-|---|------|------|-----:|
-| 1 | Senior + KPR + pinjaman sangat besar | status pinjaman *Closed* | 1,59 |
-| 2 | Saldo menengah-bawah + Visa + pinjaman disetujui | bunga tinggi | 1,57 |
-| 10 | Visa + pinjaman sangat besar + transaksi besar | utilisasi kartu sedang | 1,47 |
+| # | JIKA | MAKA | Conf | Lift |
+|---|------|------|-----:|-----:|
+| 11 | Akun giro + perempuan + pinjaman menengah + transaksi besar | **pengajuan pinjaman disetujui** | 0,53 | 1,55 |
+| 19 | Pra-pensiun (50–64) + saldo mass-market + keluhan selesai + transaksi sangat besar | **pinjaman ditutup (Closed)** | 0,50 | 1,52 |
+| 17 | Nasabah mapan (35–49) + MasterCard + bunga tinggi + transaksi sangat besar | akun giro (Current) | **0,76** | 1,53 |
+
+Aturan #19 selaras dengan kerangka *life-cycle*: nasabah pra-pensiun yang mapan
+cenderung menuntaskan/menutup pinjaman. Aturan #17 punya **Confidence tertinggi
+(76%)** — bila ketiga syarat terpenuhi, 76% nasabah berakun giro.
 
 **Kejujuran metodologis:** karena atribut kategorikal di dataset ini hampir
-independen (lihat Fase 1), nilai **Lift tertinggi pun hanya ≈1,5** — ini *batas
-data*, bukan kekurangan analisis. Kami melaporkan pola terkuat yang ada, sambil
-menegaskan bahwa pola ini sebaiknya divalidasi pada data perbankan riil sebelum
-dijadikan kebijakan.
+independen (lihat Fase 1), **Lift tertinggi pun hanya ≈1,66** — ini *batas data*,
+bukan kekurangan analisis. Aturan cenderung perlu 3–4 kondisi untuk mencapai Lift
+tinggi (sub-populasi makin sempit), sehingga interpretasi kami fokuskan pada pola
+yang paling jelas maknanya. Pola ini sebaiknya divalidasi pada data perbankan riil
+sebelum dijadikan kebijakan.
 
 ---
 
@@ -228,7 +236,7 @@ label sintetis.
 
 ## 7. Jawaban untuk Mining Expo
 
-- **Aturan paling mengejutkan?** Bahwa lift tertinggi pun hanya ≈1,5 — temuan
+- **Aturan paling mengejutkan?** Bahwa lift tertinggi pun hanya ≈1,66 — temuan
   "mengejutkan"-nya justru adalah betapa **independen**-nya atribut dataset ini,
   yang memaksa kami berpindah dari angka mentah ke rasio perilaku.
 - **Metode clustering paling interpretable?** **K-Means (K=3)**: tiga segmen

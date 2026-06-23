@@ -40,7 +40,7 @@ Dua konsekuensi yang menentukan desain:
 |------|--------|-------------|
 | **1. Preprocessing** | Cleaning, validasi, feature engineering, binning, encoding, scaling, feature selection (korelasi + Mutual Information/entropi) | Dataset bersih + 3 rasio perilaku; bukti independensi fitur |
 | **2. Clustering** | K-Means, DBSCAN, Hierarchical (3 linkage); Elbow + Silhouette | 3 segmen bernama (sil 0.57); DBSCAN mengisolasi outlier perilaku |
-| **3. Association Rule Mining** | Apriori (Support, Confidence, Lift) | 15 rule non-trivial (lift 1.47–1.59) + interpretasi bisnis |
+| **3. Association Rule Mining** | Apriori (Support, Confidence, Lift) | 82 rule non-trivial (lift 1.40–1.66) + interpretasi bisnis |
 | **4. Anomaly Detection** | IQR, Z-Score, Isolation Forest + cross-reference | 252 risk-signal konsensus; cross-ref DBSCAN noise & segmen |
 
 ### 3 Segmen Nasabah (K-Means, K=3)
@@ -123,7 +123,7 @@ Karena dataset bersifat sintetis dengan atribut yang sebagian besar independen:
 
 - **Clustering** menjadi bermakna **hanya setelah** feature engineering rasio
   perilaku — ini didokumentasikan, bukan disembunyikan.
-- **Association rules** memiliki lift moderat (≈1.5) karena atribut kategorikal
+- **Association rules** memiliki lift moderat (1.4–1.66) karena atribut kategorikal
   hampir independen — ini batas data, dan rule terkuat tetap dilaporkan.
 - **Anomaly** berbasis perilaku finansial nyata; label `Anomaly` bawaan dataset
   hanya dipakai untuk validasi akhir (bukan target), sesuai aturan proyek.

@@ -149,25 +149,30 @@ def fig_rule_network(rules, min_lift):
 
     # ukuran node = derajat (seberapa sering item muncul di rule)
     deg = dict(G.degree())
+    short = lambda s: s.split('=')[-1].strip()   # 'Loan Status=Closed' → 'Closed'
     node_trace = go.Scatter(
         x=[pos[n][0] for n in G.nodes()],
         y=[pos[n][1] for n in G.nodes()],
         mode='markers+text',
-        text=[n for n in G.nodes()],
-        textposition='top center', textfont=dict(size=9),
+        text=[short(n) for n in G.nodes()],
+        textposition='top center', textfont=dict(size=10),
         marker=dict(size=[8 + 4 * deg[n] for n in G.nodes()],
                     color=[deg[n] for n in G.nodes()],
                     colorscale='YlOrRd', showscale=True,
                     colorbar=dict(title='Keterhubungan')),
         hovertext=[f'{n} (muncul di {deg[n]} relasi)' for n in G.nodes()],
         hoverinfo='text')
+    xs = [pos[n][0] for n in G.nodes()]
+    ys = [pos[n][1] for n in G.nodes()]
+    padx = (max(xs) - min(xs)) * 0.25 + 0.15   # ruang ekstra agar label tepi tak terpotong
+    pady = (max(ys) - min(ys)) * 0.20 + 0.15
     fig = go.Figure([edge_trace, node_trace])
     fig.update_layout(
-        title=f'Jaringan Association Rules (Lift ≥ {min_lift}) — '
-              f'{len(sub)} rule',
-        showlegend=False, height=560,
-        xaxis=dict(visible=False), yaxis=dict(visible=False),
-        margin=dict(l=10, r=10, t=50, b=10))
+        title=f'Jaringan Association Rules (Lift ≥ {min_lift}) — {len(sub)} rule',
+        showlegend=False, height=600,
+        xaxis=dict(visible=False, range=[min(xs) - padx, max(xs) + padx]),
+        yaxis=dict(visible=False, range=[min(ys) - pady, max(ys) + pady]),
+        margin=dict(l=40, r=40, t=50, b=30))
     return fig
 
 
@@ -250,6 +255,10 @@ def build_app():
     n_risk = int((df['classification'] == 'Risk Signal').sum())
     lift_min = float(rules['Lift'].min()) if not rules.empty else 1.0
     lift_max = float(rules['Lift'].max()) if not rules.empty else 2.0
+    # floor ke 2 desimal: kalau max di-round KE ATAS (mis. 1.585→1.59), posisi
+    # slider tertinggi menyaring SEMUA rule → grafik kosong. Floor mencegahnya.
+    slider_min = int(lift_min * 100) / 100
+    slider_max = int(lift_max * 100) / 100
 
     tab_style = {'padding': '8px', 'fontWeight': '600'}
 
@@ -310,18 +319,16 @@ def build_app():
             # ── TAB 2: ASSOCIATION RULES ──
             dcc.Tab(label='2 · Association Rules', style=tab_style, children=[
                 html.Div([
-                    html.Label(f'Minimum Lift  (rentang {lift_min:.2f}–{lift_max:.2f})'),
-                    dcc.Slider(id='lift-slider', min=round(lift_min, 2),
-                               max=round(lift_max, 2), step=0.01,
-                               value=round(lift_min, 2),
-                               marks={round(lift_min, 2): f'{lift_min:.2f}',
-                                      round(lift_max, 2): f'{lift_max:.2f}'},
+                    html.Label(f'Minimum Lift  (rentang {slider_min:.2f}–{slider_max:.2f})'),
+                    dcc.Slider(id='lift-slider', min=slider_min,
+                               max=slider_max, step=0.01,
+                               value=slider_min,
+                               marks={slider_min: f'{slider_min:.2f}',
+                                      slider_max: f'{slider_max:.2f}'},
                                tooltip={'placement': 'bottom', 'always_visible': True}),
                 ], style={'padding': '14px 24px'}),
-                html.Div([
-                    dcc.Graph(id='rule-network', style={'flex': '3'}),
-                    dcc.Graph(id='rule-scatter', style={'flex': '2'}),
-                ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px'}),
+                dcc.Graph(id='rule-network', style={'padding': '0 16px'}),
+                dcc.Graph(id='rule-scatter', style={'padding': '0 16px'}),
                 html.Div(id='rule-table', style={'padding': '12px 20px'}),
             ]),
 
