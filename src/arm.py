@@ -52,8 +52,8 @@ MIN_LIFT       = 1.4    # hanya ambil rules yang non-trivial
 # MIN_CONFIDENCE = 0.5
 # Rule harus benar pada minimal separuh kasus antecedent → consequent.
 
-# MIN_LIFT = 1.2
-# Lift > 1 berarti hubungan non-trivial; 1.2 berarti setidaknya 20% lebih kuat dari random.
+# MIN_LIFT = 1.4
+# Lift > 1 berarti hubungan non-trivial; 1.4 berarti setidaknya 40% lebih kuat dari random.
 
 # Jika jumlah rule terlalu sedikit, threshold support dapat diturunkan secara bertahap, 
 # tetapi tetap harus dijaga agar rule tidak menjadi terlalu lemah atau tidak meaningful.
@@ -135,8 +135,7 @@ def find_frequent_itemsets(df_encoded, min_support=MIN_SUPPORT):
     frequent_itemsets = apriori(
         df_encoded,
         min_support=min_support,
-        use_colnames=True,
-        max_len=4       # maksimal 4 item per itemset
+        use_colnames=True       # tanpa max_len → Apriori bebas tentukan panjang itemset
     )
     frequent_itemsets['length'] = frequent_itemsets['itemsets'].apply(len)
 
@@ -174,7 +173,7 @@ def find_frequent_itemsets(df_encoded, min_support=MIN_SUPPORT):
 # → Lift < 1 : A dan B berkorelasi negatif
 #
 # Filter yang digunakan:
-# - Lift > 1.2   : hanya rules yang benar-benar non-trivial
+# - Lift > 1.4   : hanya rules yang benar-benar non-trivial
 # - Confidence > 0.5 : minimal 50% akurasi rule
 # - Buang rules trivial (antecedent = consequent)
 # ════════════════════════════════════════════════════════════
@@ -247,7 +246,7 @@ def auto_tune_support(df_encoded, target_rules=10,
         print(f"\nMencoba min_support = {sup}...")
         frequent_itemsets = apriori(
             df_encoded, min_support=sup,
-            use_colnames=True, max_len=4
+            use_colnames=True
         )
         if len(frequent_itemsets) == 0:
             continue
@@ -265,7 +264,7 @@ def auto_tune_support(df_encoded, target_rules=10,
     print("⚠️  Tidak bisa mencapai target rules. Pakai min_support terkecil.")
     frequent_itemsets = apriori(
         df_encoded, min_support=0.005,
-        use_colnames=True, max_len=4
+        use_colnames=True
     )
     rules = association_rules(
         frequent_itemsets, metric='lift', min_threshold=min_lift
