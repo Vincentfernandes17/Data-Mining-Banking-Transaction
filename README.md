@@ -39,7 +39,7 @@ Dua konsekuensi yang menentukan desain:
 | Fase | Teknik | Hasil utama |
 |------|--------|-------------|
 | **1. Preprocessing** | Cleaning, validasi, feature engineering, binning, encoding, scaling, feature selection (korelasi + Mutual Information/entropi) | Dataset bersih + 3 rasio perilaku; bukti independensi fitur |
-| **2. Clustering** | K-Means, DBSCAN, Hierarchical (3 linkage); Elbow + Silhouette | 3 segmen bernama (sil 0.57); DBSCAN mengisolasi outlier perilaku |
+| **2. Clustering** | K-Means, DBSCAN, Hierarchical (3 linkage); Elbow + Silhouette; validasi feature-selection (manual vs exhaustive otomatis) | 3 segmen bernama (sil 0.57); seleksi otomatis mengonfirmasi 3 rasio (#1 dari 286); profil segmen diperkaya demografi |
 | **3. Association Rule Mining** | Apriori (Support, Confidence, Lift) | 82 rule non-trivial (lift 1.40–1.66) + interpretasi bisnis |
 | **4. Anomaly Detection** | IQR, Z-Score, Isolation Forest + cross-reference | 252 risk-signal konsensus; cross-ref DBSCAN noise & segmen |
 
@@ -76,7 +76,7 @@ Banking_Transaction/
 │   └── dataset_final.csv       ← output P4 → input P5 (label cluster + anomali)
 └── outputs/
     ├── phase1/  ← EDA, korelasi, MI, outlier
-    ├── phase2/  ← scree (bukti PCA), elbow/silhouette, scatter, dendrogram, profil
+    ├── phase2/  ← scree (bukti PCA), feature-selection comparison, elbow/silhouette, scatter, dendrogram, profil + demografi
     ├── phase3/  ← distribusi support, scatter & bar rules, top_rules.csv
     └── phase4/  ← method overlap, anomaly scatter, anomaly_report.csv
 ```

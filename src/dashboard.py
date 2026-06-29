@@ -36,9 +36,13 @@ from dash import Dash, dcc, html, dash_table, Input, Output
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR   = os.path.join(BASE_DIR, 'data')
+PHASE2_DIR = os.path.join(BASE_DIR, 'outputs', 'phase2')
 PHASE3_DIR = os.path.join(BASE_DIR, 'outputs', 'phase3')
 
 RATIOS = ['CC_Utilization', 'Transaction_to_Balance_Ratio', 'Loan_to_Balance_Ratio']
+# Fitur demografis (urut dari paling membedakan segmen) untuk profil tambahan
+DEMOGRAPHICS = ['Account Type', 'Age_Group', 'Loan Status', 'Gender',
+                'Card Type', 'Loan Type']
 RATIO_LABEL = {
     'CC_Utilization': 'Utilisasi Kartu (saldo/limit)',
     'Transaction_to_Balance_Ratio': 'Transaksi/Saldo',
@@ -120,6 +124,44 @@ def fig_segment_profile(df, method):
                  title='Profil Rasio Perilaku per Segmen (median, skala log)')
     fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10),
                       legend_title_text='Segmen')
+    return fig
+
+
+def fig_segment_demographics(df, method, cat):
+    """Komposisi demografis (kategorikal) tiap segmen — 100% stacked bar.
+    Pada data sintetis ini distribusinya cenderung seragam antar segmen,
+    yang justru menegaskan: segmen dibentuk PERILAKU, bukan demografi."""
+    if cat not in df.columns:
+        return go.Figure().update_layout(title=f'Kolom {cat} tidak tersedia')
+    ct = (pd.crosstab(df[method], df[cat], normalize='index') * 100).reset_index()
+    long = ct.melt(id_vars=method, var_name=cat, value_name='Persen')
+    spread = (ct.drop(columns=[method]).max() - ct.drop(columns=[method]).min()).max()
+    note = 'membedakan' if spread >= 10 else 'nyaris seragam'
+    fig = px.bar(long, x=method, y='Persen', color=cat, barmode='stack',
+                 title=f'Komposisi {cat} per Segmen (%) — spread {spread:.0f} pp ({note})',
+                 labels={method: 'Segmen', 'Persen': '% dalam segmen'})
+    fig.update_layout(height=430, margin=dict(l=10, r=10, t=50, b=10),
+                      legend_title_text=cat, yaxis_range=[0, 100])
+    return fig
+
+
+def fig_feature_selection():
+    """Validasi pemilihan fitur: silhouette per set fitur (dibaca dari CSV Phase 2).
+    Pencarian otomatis memilih 3 rasio yang sama dengan pilihan domain."""
+    path = os.path.join(PHASE2_DIR, 'feature_selection_comparison.csv')
+    if not os.path.exists(path):
+        return go.Figure().update_layout(
+            title='feature_selection_comparison.csv belum dibuat (jalankan Phase 2)')
+    comp = pd.read_csv(path)
+    palette = ['#bdc3c7', '#bdc3c7', '#f39c12', '#2ecc71']
+    colors = [palette[i] if i < len(palette) else '#2ecc71' for i in range(len(comp))]
+    fig = go.Figure(go.Bar(
+        x=comp['Feature Set'], y=comp['Silhouette'], marker_color=colors,
+        text=[f'{v:.3f}' for v in comp['Silhouette']], textposition='outside'))
+    fig.update_layout(
+        title='Validasi Pemilihan Fitur — Silhouette per Set Fitur (K-Means, K=3)',
+        yaxis_title='Silhouette Score', yaxis_range=[0, 0.65],
+        height=400, margin=dict(l=10, r=10, t=50, b=90))
     return fig
 
 
@@ -314,6 +356,28 @@ def build_app():
                     dcc.Graph(id='segment-pie', style={'flex': '2'}),
                 ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px'}),
                 dcc.Graph(id='segment-profile', style={'padding': '0 16px'}),
+
+                # Profil demografis tambahan (kategorikal) per segmen
+                html.Div([
+                    html.Label('Fitur demografis untuk profil segmen'),
+                    dcc.Dropdown(
+                        id='seg-demo',
+                        options=[{'label': c, 'value': c}
+                                 for c in DEMOGRAPHICS if c in df.columns],
+                        value=next((c for c in DEMOGRAPHICS if c in df.columns), None),
+                        clearable=False),
+                ], style={'padding': '8px 20px'}),
+                dcc.Graph(id='segment-demographics', style={'padding': '0 16px'}),
+
+                # Validasi pemilihan fitur (statis) — kenapa 3 rasio ini
+                html.Div('Kenapa 3 rasio ini dipakai? Pencarian otomatis atas SEMUA '
+                         'kombinasi 3-fitur memilih ketiga rasio yang sama (peringkat #1), '
+                         'jauh mengungguli fitur mentah & PCA — pilihan domain tervalidasi '
+                         'secara data-driven.',
+                         style={'padding': '12px 24px 0', 'color': '#555',
+                                'fontSize': '13px'}),
+                dcc.Graph(id='feature-selection', figure=fig_feature_selection(),
+                          style={'padding': '0 16px 18px'}),
             ]),
 
             # ── TAB 2: ASSOCIATION RULES ──
@@ -366,12 +430,14 @@ def build_app():
     # ── Callbacks ──
     @app.callback(
         Output('cluster-map', 'figure'), Output('segment-pie', 'figure'),
-        Output('segment-profile', 'figure'),
-        Input('seg-method', 'value'), Input('seg-x', 'value'), Input('seg-y', 'value'))
-    def _seg(method, x, y):
+        Output('segment-profile', 'figure'), Output('segment-demographics', 'figure'),
+        Input('seg-method', 'value'), Input('seg-x', 'value'), Input('seg-y', 'value'),
+        Input('seg-demo', 'value'))
+    def _seg(method, x, y, demo):
         return (fig_cluster_map(df, method, x, y),
                 fig_segment_sizes(df, method),
-                fig_segment_profile(df, method))
+                fig_segment_profile(df, method),
+                fig_segment_demographics(df, method, demo))
 
     @app.callback(
         Output('rule-network', 'figure'), Output('rule-scatter', 'figure'),

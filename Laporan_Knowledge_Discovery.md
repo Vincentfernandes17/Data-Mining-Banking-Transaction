@@ -105,7 +105,27 @@ melakukan clustering langsung pada 3 rasio perilaku.
 **≈0,07** (fitur mentah, praktis tanpa struktur) menjadi **≈0,57** (rasio
 perilaku). Ini perbedaan antara "tidak ada cluster" dan "cluster yang jelas".
 
-### 3.2 Tiga Algoritma, Satu Kesimpulan
+### 3.2 Validasi Pemilihan Fitur — Manual vs Otomatis
+
+Agar pemilihan 3 rasio tidak terkesan "dipilih dengan tangan", kami menguji apakah
+**pencarian fitur otomatis** akan sampai pada kesimpulan yang sama. Sebuah pencarian
+*exhaustive* mengevaluasi **seluruh 286 kombinasi 3-fitur** yang mungkin (dari 10
+fitur mentah + 3 rasio), masing-masing dinilai Silhouette K-Means (K=3):
+
+| Set Fitur | Jumlah Fitur | Silhouette |
+|-----------|-------------:|-----------:|
+| Semua fitur mentah | 10 | 0,065 |
+| PCA (8 komponen) | 8 | 0,081 |
+| **Seleksi otomatis (3 terbaik)** | 3 | **0,571** |
+| **3 rasio domain (pilihan kami)** | 3 | **0,571** |
+
+Hasilnya tegas: dari 286 kombinasi, **kombinasi terbaik yang dipilih algoritma adalah
+persis ketiga rasio yang kami tentukan secara domain** (peringkat #1 dari 286) — jauh
+di atas fitur mentah (0,065) maupun PCA (0,081). Dengan kata lain, pilihan manual kami
+**terkonfirmasi secara data-driven**, bukan sekadar intuisi.
+(`outputs/phase2/feature_selection_comparison.png`)
+
+### 3.3 Tiga Algoritma, Satu Kesimpulan
 
 | Metode | Jumlah Cluster | Silhouette | Catatan |
 |--------|----------------|-----------:|---------|
@@ -118,7 +138,7 @@ domain**: K=2 hanya memisahkan kelompok over-limit dari sisanya, sedangkan K=3
 memunculkan segmen ketiga (liquidity-stressed) yang **lebih actionable** secara
 bisnis — dan silhouette-nya tetap tinggi (0,57).
 
-### 3.3 Profil Tiga Segmen (nilai median, satuan asli)
+### 3.4 Profil Tiga Segmen (nilai median, satuan asli)
 
 | Segmen | Porsi | Utilisasi Kartu | Transaksi/Saldo | Pinjaman/Saldo | Saldo | Limit |
 |--------|------:|----------------:|----------------:|---------------:|------:|------:|
@@ -135,6 +155,17 @@ bisnis — dan silhouette-nya tetap tinggi (0,57).
 - **Liquidity-Stressed / High-Leverage** — saldo sangat tipis (median 550) tetapi
   bertransaksi **5×** dan berutang **52×** dari saldonya. Kelompok kecil (7%) tapi
   **paling rapuh**.
+
+**Profil melampaui 3 rasio — kami juga memeriksa demografi.** Tiap segmen tidak hanya
+diprofilkan dengan rasio input, tetapi juga dengan fitur finansial lain dan demografi:
+- Yang benar-benar **membedakan** segmen adalah variabel **finansial**: limit kartu,
+  saldo, dan pinjaman. Contoh paling jelas — Credit-Stressed punya **limit kartu median
+  hanya ≈1.900** (vs ≈6.000 di segmen lain), itulah akar utilisasi kartunya yang >100%.
+- Sebaliknya, **demografi (Gender, Age_Group, Account Type, Loan/Card Type) nyaris
+  seragam** di ketiga segmen — selisih antar-segmen hanya **2–7 poin persen**. Ini
+  temuan penting yang kami sampaikan apa adanya: **segmen dibentuk oleh perilaku
+  finansial, bukan demografi**, sejalan dengan sifat dataset yang independen.
+  (`outputs/phase2/profile_kmeans_cluster_demographics.png`)
 
 ---
 
