@@ -1,0 +1,5 @@
+Feature Set,N_Fitur,Silhouette
+Semua fitur mentah,10,0.0654
+PCA (8 komponen),8,0.0806
+Seleksi otomatis (3 terbaik),3,0.571
+3 Rasio domain (dipilih),3,0.571

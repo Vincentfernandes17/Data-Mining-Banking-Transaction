@@ -56,6 +56,7 @@ from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
 from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
 from scipy.stats.mstats import winsorize
+from itertools import combinations
 
 BASE_DIR   = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR   = os.path.join(BASE_DIR, 'data')
@@ -85,6 +86,20 @@ PROFILE_CONTEXT = [
     'Account Balance After Transaction',
 ]
 
+# Fitur kontinu MENTAH — dipakai untuk dimensionality analysis & sebagai
+# kandidat "non-manual" di feature_selection_comparison.
+RAW_CONTINUOUS = [
+    'Age', 'Account Balance', 'Transaction Amount', 'Loan Amount',
+    'Interest Rate', 'Loan Term', 'Credit Limit', 'Credit Card Balance',
+    'Rewards Points', 'Account_Age_Years', 'Days_Since_Last_Transaction',
+]
+
+# Fitur demografis/kategorikal untuk MEMPERKAYA profil segmen (di-join by index
+# dari dataset_arm.csv; BUKAN input clustering). Semua file row-aligned 5000 baris.
+PROFILE_CATEGORICAL = [
+    'Gender', 'Age_Group', 'Account Type', 'Loan Type', 'Loan Status', 'Card Type',
+]
+
 
 # ════════════════════════════════════════════════════════════
 # LOAD
@@ -106,17 +121,45 @@ def load_clustering_data(path):
 
 
 # ════════════════════════════════════════════════════════════
+# ATTACH CATEGORICALS — perkaya profil segmen dengan demografi
+# Fitur kategorikal (Gender, Age_Group, dst) diambil dari dataset_arm.csv yang
+# ROW-ALIGNED (5000 baris, urutan sama). Dipakai HANYA untuk profiling, bukan
+# input jarak clustering. Alignment diverifikasi lewat kolom bersama.
+# ════════════════════════════════════════════════════════════
+def attach_categoricals(df):
+    arm_path = os.path.join(DATA_DIR, 'dataset_arm.csv')
+    if not os.path.exists(arm_path):
+        print("  dataset_arm.csv tidak ada → profil kategorikal dilewati.")
+        return df
+    arm = pd.read_csv(arm_path)
+    if len(arm) != len(df):
+        print(f"  Jumlah baris beda (arm={len(arm)}, clustering={len(df)}) "
+              f"→ profil kategorikal dilewati.")
+        return df
+    # Verifikasi row-alignment lewat kolom bersama 'Transaction Type'
+    if 'Transaction Type' in df.columns and 'Transaction Type' in arm.columns:
+        match = (df['Transaction Type'].values == arm['Transaction Type'].values).mean()
+        print(f"  Verifikasi alignment (Transaction Type cocok): {match*100:.1f}%")
+        if match < 0.999:
+            print("  PERINGATAN: alignment <100% → profil kategorikal dibatalkan.")
+            return df
+    added = []
+    for c in PROFILE_CATEGORICAL:
+        if c in arm.columns:
+            df[c] = arm[c].values
+            added.append(c)
+    print(f"  Fitur kategorikal ditempel untuk profiling: {added}")
+    return df
+
+
+# ════════════════════════════════════════════════════════════
 # DIMENSIONALITY ANALYSIS — BUKTI PCA TIDAK EFEKTIF
 # Bukan reduksi sungguhan. Kita jalankan PCA pada fitur kontinu mentah
 # hanya untuk MEMBUKTIKAN scree plot-nya datar (~1/n per komponen),
 # yang menjelaskan kenapa reduksi 11→9 tidak berguna di dataset ini.
 # ════════════════════════════════════════════════════════════
 def dimensionality_analysis(df, save_plots=True):
-    raw_cont = [c for c in [
-        'Age', 'Account Balance', 'Transaction Amount', 'Loan Amount',
-        'Interest Rate', 'Loan Term', 'Credit Limit', 'Credit Card Balance',
-        'Rewards Points', 'Account_Age_Years', 'Days_Since_Last_Transaction',
-    ] if c in df.columns]
+    raw_cont = [c for c in RAW_CONTINUOUS if c in df.columns]
 
     X = StandardScaler().fit_transform(df[raw_cont])
     pca = PCA(random_state=RANDOM_STATE).fit(X)
@@ -146,6 +189,101 @@ def dimensionality_analysis(df, save_plots=True):
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'pca_why_not_used.png'), dpi=150)
     plt.close()
+
+
+# ════════════════════════════════════════════════════════════
+# FEATURE SELECTION COMPARISON — manual (domain) vs OTOMATIS
+# Dosen minta pembanding: jangan cuma pilih 3 rasio secara manual, tapi tunjukkan
+# bahwa pilihan itu menang secara kuantitatif. Kita bandingkan silhouette K-Means
+# (K=BEST_K) pada 4 set fitur:
+#   (1) semua fitur mentah, (2) PCA, (3) subset terbaik hasil pencarian OTOMATIS
+#       (exhaustive semua kombinasi 3-fitur), (4) 3 rasio domain (pilihan kita).
+# Kalau pencarian otomatis mendarat di 3 rasio yang sama → konfirmasi data-driven.
+# ════════════════════════════════════════════════════════════
+def _winsor_scale(df, cols):
+    Xw = df[cols].copy()
+    for c in cols:
+        Xw[c] = winsorize(Xw[c], limits=[0, WINSOR_LIMIT])
+    return StandardScaler().fit_transform(Xw)
+
+
+def _kmeans_silhouette(X, k=BEST_K, n_init=N_INIT, sample=None):
+    km = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=n_init).fit(X)
+    if sample:
+        return silhouette_score(X, km.labels_, sample_size=min(sample, len(X)),
+                                random_state=RANDOM_STATE)
+    return silhouette_score(X, km.labels_)
+
+
+def feature_selection_comparison(df, ratio_feats, save_plots=True):
+    raw = [c for c in RAW_CONTINUOUS if c in df.columns]
+    pool = raw + ratio_feats
+    print("\n=== FEATURE SELECTION COMPARISON (domain manual vs otomatis) ===")
+    print(f"Pool kandidat: {len(raw)} fitur mentah + {len(ratio_feats)} rasio "
+          f"= {len(pool)} fitur")
+
+    # (1) semua fitur mentah
+    sil_raw = _kmeans_silhouette(_winsor_scale(df, raw))
+    # (2) PCA pada fitur mentah → komponen 80% variance lalu cluster
+    Xraw = _winsor_scale(df, raw)
+    pca = PCA(random_state=RANDOM_STATE).fit(Xraw)
+    n80 = int(np.argmax(pca.explained_variance_ratio_.cumsum() >= 0.80)) + 1
+    sil_pca = _kmeans_silhouette(
+        PCA(n_components=n80, random_state=RANDOM_STATE).fit_transform(Xraw))
+    # (3) seleksi OTOMATIS: exhaustive semua kombinasi 3-fitur, maksimalkan silhouette
+    combos = list(combinations(pool, 3))
+    print(f"Exhaustive search {len(combos)} kombinasi 3-fitur (otomatis, "
+          f"silhouette pada sampel)...")
+    scored = [(_kmeans_silhouette(_winsor_scale(df, list(c)), n_init=5, sample=1200), c)
+              for c in combos]
+    scored.sort(key=lambda t: t[0], reverse=True)
+    _, best_auto_cols = scored[0]
+    dom_set = set(ratio_feats)
+    dom_rank = next(i for i, (s, c) in enumerate(scored, 1) if set(c) == dom_set)
+    # (3b) & (4) silhouette PENUH (tanpa sampling) agar otomatis & domain setara
+    best_auto_sil = _kmeans_silhouette(_winsor_scale(df, list(best_auto_cols)))
+    sil_dom = _kmeans_silhouette(_winsor_scale(df, ratio_feats))
+
+    comp = pd.DataFrame({
+        'Feature Set': ['Semua fitur mentah', f'PCA ({n80} komponen)',
+                        'Seleksi otomatis (3 terbaik)', '3 Rasio domain (dipilih)'],
+        'N_Fitur':    [len(raw), n80, 3, 3],
+        'Silhouette': [round(sil_raw, 4), round(sil_pca, 4),
+                       round(best_auto_sil, 4), round(sil_dom, 4)],
+    })
+    print(comp.to_string(index=False))
+    print(f"\nKombinasi 3-fitur TERBAIK (otomatis): {list(best_auto_cols)}")
+    print(f"3 rasio domain menempati peringkat #{dom_rank} dari {len(scored)} kombinasi.")
+    print("Top-5 kombinasi 3-fitur (silhouette sampel saat pencarian):")
+    for s, c in scored[:5]:
+        mark = '   <== pilihan domain' if set(c) == dom_set else ''
+        print(f"  {s:.4f}  {list(c)}{mark}")
+
+    if set(best_auto_cols) == dom_set:
+        print("\nKESIMPULAN: pencarian OTOMATIS mendarat tepat pada 3 rasio yang sama "
+              "dengan pilihan domain → pilihan manual TERKONFIRMASI secara data-driven.")
+    else:
+        print(f"\nKESIMPULAN: rasio domain (sil={sil_dom:.3f}) jauh mengungguli fitur "
+              f"mentah ({sil_raw:.3f}) & PCA ({sil_pca:.3f}); peringkat #{dom_rank} "
+              f"dari {len(scored)} kombinasi → pilihan manual tervalidasi kuantitatif.")
+
+    # Bar chart perbandingan
+    plt.figure(figsize=(9, 5))
+    colors = ['#bdc3c7', '#bdc3c7', '#f39c12', '#2ecc71']
+    bars = plt.bar(comp['Feature Set'], comp['Silhouette'], color=colors)
+    for b, v in zip(bars, comp['Silhouette']):
+        plt.text(b.get_x() + b.get_width() / 2, v + 0.005, f'{v:.3f}',
+                 ha='center', fontsize=10, fontweight='bold')
+    plt.ylabel('Silhouette Score (K-Means, K=%d)' % BEST_K)
+    plt.title('Perbandingan Feature Selection — Rasio Domain vs Alternatif Otomatis')
+    plt.xticks(rotation=12, ha='right'); plt.grid(axis='y', alpha=0.3)
+    plt.tight_layout()
+    if save_plots:
+        plt.savefig(os.path.join(OUTPUT_DIR, 'feature_selection_comparison.png'), dpi=150)
+    plt.close()
+    # CSV untuk dashboard
+    comp.to_csv(os.path.join(OUTPUT_DIR, 'feature_selection_comparison.csv'), index=False)
+    return comp
 
 
 # ════════════════════════════════════════════════════════════
@@ -301,12 +439,14 @@ def profile_clusters(df, feats, cluster_col, save_plots=True):
     print(f"\n{'='*60}")
     print(f"  CLUSTER PROFILE — {cluster_col} (median, nilai asli)")
     print(f"{'='*60}")
-    show = feats + ['Account Balance', 'Credit Limit', 'Loan Amount',
-                    'Age', 'Rewards Points', 'n', 'pct']
+    show = feats + ['Account Balance', 'Credit Limit', 'Credit Card Balance',
+                    'Loan Amount', 'Transaction Amount', 'Age', 'n', 'pct']
     show = [c for c in show if c in prof.columns]
     disp = prof[show].copy()
     disp.insert(0, 'Segment', prof['Segment'])
     print(disp.T.to_string())
+    print("Catatan: fitur FINANSIAL numerik (saldo/limit/pinjaman) yang paling "
+          "membedakan segmen & menjelaskan rasio — bukan sekadar 3 input clustering.")
 
     # Cross-check Anomaly (insight, bukan input model)
     if 'Anomaly' in df.columns:
@@ -333,7 +473,70 @@ def profile_clusters(df, feats, cluster_col, save_plots=True):
         fname = f"profile_{cluster_col.lower().replace(' ', '_')}.png"
         plt.savefig(os.path.join(OUTPUT_DIR, fname), dpi=150)
     plt.close()
+
+    # ── Profil DEMOGRAFIS / KATEGORIKAL per segmen (memperkaya, bukan input) ──
+    profile_categoricals(df, cluster_col, names, save_plots=save_plots)
     return prof, names
+
+
+# ════════════════════════════════════════════════════════════
+# CLUSTER PROFILE (KATEGORIKAL) — Gender, Age_Group, Account Type, dst.
+# Dosen minta profil tak cuma 3 rasio input. Kita tunjukkan komposisi demografis
+# tiap segmen. Temuan jujur: pada dataset sintetis ini demografi nyaris SERAGAM
+# antar segmen (independen) — jadi segmen murni dibentuk PERILAKU finansial.
+# "spread" = selisih proporsi maks–min satu kategori antar cluster (poin persen).
+# ════════════════════════════════════════════════════════════
+def profile_categoricals(df, cluster_col, names, save_plots=True, spread_thresh=10.0):
+    cats = [c for c in PROFILE_CATEGORICAL if c in df.columns]
+    if not cats:
+        return
+    spreads = {}
+    for c in cats:
+        ct = pd.crosstab(df[cluster_col], df[c], normalize='index') * 100
+        spreads[c] = float((ct.max() - ct.min()).max())
+    order = sorted(cats, key=lambda c: spreads[c], reverse=True)
+
+    print(f"\n--- Komposisi demografis/kategorikal per {cluster_col} (%) ---")
+    for c in order:
+        ct = pd.crosstab(df[cluster_col], df[c], normalize='index') * 100
+        dom = ct.idxmax(axis=1)
+        tag = 'MEMBEDAKAN' if spreads[c] >= spread_thresh else '~seragam'
+        detail = ", ".join(f"C{cid}:{dom[cid]}({ct.loc[cid, dom[cid]]:.0f}%)"
+                           for cid in ct.index)
+        print(f"  {c:13s} [spread {spreads[c]:4.1f} pp · {tag:11s}] dominan → {detail}")
+    diff = [c for c in order if spreads[c] >= spread_thresh]
+    print(f"\n  → Fitur yang MEMBEDAKAN segmen : {diff if diff else 'praktis tidak ada'}")
+    print(f"  → Fitur yang nyaris SERAGAM    : {[c for c in order if spreads[c] < spread_thresh]}")
+    print("  → Interpretasi: segmen dibentuk PERILAKU finansial (rasio + saldo/limit/"
+          "pinjaman), bukan demografi. Demografi independen → ciri dataset sintetis.")
+
+    # Viz: 100% stacked bar komposisi tiap kategorikal per cluster
+    ncol = 3
+    nrow = int(np.ceil(len(order) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(5 * ncol, 3.6 * nrow))
+    axes = np.array(axes).reshape(-1)
+    cids = sorted(df[cluster_col].unique())
+    xlabels = [f"C{c}" for c in cids]
+    for ax, c in zip(axes, order):
+        ct = pd.crosstab(df[cluster_col], df[c], normalize='index') * 100
+        ct = ct.reindex(cids)
+        bottom = np.zeros(len(cids))
+        for cat in ct.columns:
+            ax.bar(xlabels, ct[cat].values, bottom=bottom, label=str(cat))
+            bottom += ct[cat].values
+        ax.set_title(f'{c}  (spread {spreads[c]:.0f} pp)', fontsize=10)
+        ax.set_ylabel('% dalam cluster'); ax.set_ylim(0, 100)
+        ax.legend(fontsize=7, ncol=2, loc='lower center')
+    for ax in axes[len(order):]:
+        ax.axis('off')
+    plt.suptitle(f'Komposisi Demografis per Segmen — {cluster_col} '
+                 f'(makin seragam = demografi tak membedakan)',
+                 fontsize=12, fontweight='bold')
+    plt.tight_layout(rect=[0, 0, 1, 0.96])
+    if save_plots:
+        fname = f"profile_{cluster_col.lower().replace(' ', '_')}_demographics.png"
+        plt.savefig(os.path.join(OUTPUT_DIR, fname), dpi=150)
+    plt.close()
 
 
 # ════════════════════════════════════════════════════════════
@@ -503,28 +706,34 @@ def run_clustering(path=None):
     print("  PHASE 2 — Segmentation via Clustering")
     print("=" * 55)
 
-    print("\n[1/7] Load data...")
+    print("\n[1/9] Load data...")
     df, feats = load_clustering_data(path)
 
-    print("\n[2/7] Dimensionality analysis (bukti PCA tidak dipakai)...")
+    print("\n[2/9] Tempel fitur demografis/kategorikal (untuk profiling)...")
+    df = attach_categoricals(df)
+
+    print("\n[3/9] Dimensionality analysis (bukti PCA tidak dipakai)...")
     dimensionality_analysis(df)
 
-    print("\n[3/7] Winsorize + scale fitur rasio...")
+    print("\n[4/9] Feature selection comparison (domain vs otomatis)...")
+    feature_selection_comparison(df, feats)
+
+    print("\n[5/9] Winsorize + scale fitur rasio...")
     X_scaled = prepare_features(df, feats)
 
-    print("\n[4/7] Elbow & Silhouette...")
+    print("\n[6/9] Elbow & Silhouette...")
     best_k, _ = find_optimal_k(X_scaled)
 
-    print(f"\n[5/7] K-Means (K={best_k})...")
+    print(f"\n[7/9] K-Means (K={best_k}) + profil segmen...")
     df, sil_km = run_kmeans(df, X_scaled, feats, best_k)
     _, names = profile_clusters(df, feats, 'KMeans_Cluster')
 
-    print("\n[6/7] DBSCAN + Hierarchical...")
+    print("\n[8/9] DBSCAN + Hierarchical + profil...")
     df, n_clusters_db, n_noise, _ = run_dbscan(df, X_scaled, feats)
     df, sil_hier = run_hierarchical(df, X_scaled, best_k)
     profile_clusters(df, feats, 'Hierarchical_Cluster')
 
-    print("\n[7/7] Perbandingan & simpan...")
+    print("\n[9/9] Perbandingan & simpan...")
     compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise)
     save_clustered(df, names)
 
