@@ -233,16 +233,15 @@ def feature_selection_comparison(df, ratio_feats, save_plots=True):
     # (3) seleksi OTOMATIS: exhaustive semua kombinasi 3-fitur, maksimalkan silhouette
     combos = list(combinations(pool, 3))
     print(f"Exhaustive search {len(combos)} kombinasi 3-fitur (otomatis, "
-          f"silhouette pada sampel)...")
-    scored = [(_kmeans_silhouette(_winsor_scale(df, list(c)), n_init=5, sample=1200), c)
-              for c in combos]
+          f"silhouette PENUH pada 5000 baris — ini bagian paling lama)...")
+    # Silhouette dihitung pada SELURUH 5000 baris (tanpa sampling) agar peringkat
+    # benar-benar setara dengan angka final yang dilaporkan.
+    scored = [(_kmeans_silhouette(_winsor_scale(df, list(c))), c) for c in combos]
     scored.sort(key=lambda t: t[0], reverse=True)
-    _, best_auto_cols = scored[0]
+    best_auto_sil, best_auto_cols = scored[0]
     dom_set = set(ratio_feats)
     dom_rank = next(i for i, (s, c) in enumerate(scored, 1) if set(c) == dom_set)
-    # (3b) & (4) silhouette PENUH (tanpa sampling) agar otomatis & domain setara
-    best_auto_sil = _kmeans_silhouette(_winsor_scale(df, list(best_auto_cols)))
-    sil_dom = _kmeans_silhouette(_winsor_scale(df, ratio_feats))
+    sil_dom = next(s for s, c in scored if set(c) == dom_set)
 
     comp = pd.DataFrame({
         'Feature Set': ['Semua fitur mentah', f'PCA ({n80} komponen)',
@@ -254,7 +253,7 @@ def feature_selection_comparison(df, ratio_feats, save_plots=True):
     print(comp.to_string(index=False))
     print(f"\nKombinasi 3-fitur TERBAIK (otomatis): {list(best_auto_cols)}")
     print(f"3 rasio domain menempati peringkat #{dom_rank} dari {len(scored)} kombinasi.")
-    print("Top-5 kombinasi 3-fitur (silhouette sampel saat pencarian):")
+    print("Top-5 kombinasi 3-fitur (silhouette penuh 5000 baris):")
     for s, c in scored[:5]:
         mark = '   <== pilihan domain' if set(c) == dom_set else ''
         print(f"  {s:.4f}  {list(c)}{mark}")
