@@ -10,7 +10,8 @@ audiens non-teknis. Menampilkan empat hal yang diminta proyek:
 
 Sumber data (hasil Phase 1–4):
   - data/dataset_final.csv          (5000 nasabah + label cluster + label anomali)
-  - outputs/phase3/top_rules.csv    (association rules)
+  - outputs/phase3/rules_all.csv    (SEMUA association rules lolos filter;
+                                     fallback: top_rules.csv untuk repo lama)
 
 Cara menjalankan:
     python main.py --phase 5
@@ -70,6 +71,14 @@ METHOD_LABEL = {
 # LOAD
 # ════════════════════════════════════════════════════════════
 def load_dashboard_data():
+    """Muat dua sumber data dashboard: dataset_final.csv (5000 nasabah,
+    hasil gabungan Phase 1-4) dan tabel association rules.
+
+    Rules diambil dari rules_all.csv (SEMUA rule lolos filter — supaya KPI
+    'Association Rules' konsisten dengan angka di laporan), dengan fallback
+    ke top_rules.csv bila file lengkap belum ada. Kolom cluster non-KMeans
+    di-cast ke string agar diperlakukan kategorikal oleh Plotly.
+    """
     fpath = os.path.join(DATA_DIR, 'dataset_final.csv')
     if not os.path.exists(fpath):
         raise FileNotFoundError(
@@ -79,7 +88,9 @@ def load_dashboard_data():
         if col in df.columns:
             df[col] = df[col].astype(str)
 
-    rules_path = os.path.join(PHASE3_DIR, 'top_rules.csv')
+    rules_path = os.path.join(PHASE3_DIR, 'rules_all.csv')
+    if not os.path.exists(rules_path):                    # fallback repo lama
+        rules_path = os.path.join(PHASE3_DIR, 'top_rules.csv')
     rules = pd.read_csv(rules_path) if os.path.exists(rules_path) else pd.DataFrame()
     return df, rules
 
@@ -88,6 +99,8 @@ def load_dashboard_data():
 # FIGURE BUILDERS (dipisah agar bisa di-smoke-test tanpa server)
 # ════════════════════════════════════════════════════════════
 def fig_cluster_map(df, method, x, y):
+    """Peta segmen: scatter dua rasio perilaku (log-log) diwarnai label
+    cluster dari metode terpilih — visual 'cluster map' utama dashboard."""
     color_map = SEGMENT_COLORS if method == 'KMeans_Segment' else None
     fig = px.scatter(
         df, x=x, y=y, color=method,
@@ -104,6 +117,7 @@ def fig_cluster_map(df, method, x, y):
 
 
 def fig_segment_sizes(df, method):
+    """Donut chart proporsi nasabah per segmen untuk metode terpilih."""
     counts = df[method].value_counts().reset_index()
     counts.columns = ['Segment', 'Jumlah']
     color_map = SEGMENT_COLORS if method == 'KMeans_Segment' else None
@@ -115,6 +129,8 @@ def fig_segment_sizes(df, method):
 
 
 def fig_segment_profile(df, method):
+    """Bar chart median 3 rasio perilaku per segmen (log-y) — profil
+    kuantitatif yang membedakan tiap segmen."""
     prof = df.groupby(method)[RATIOS].median().reset_index()
     long = prof.melt(id_vars=method, var_name='Rasio', value_name='Median')
     long['Rasio'] = long['Rasio'].map(RATIO_LABEL)
@@ -166,6 +182,9 @@ def fig_feature_selection():
 
 
 def fig_rule_network(rules, min_lift):
+    """Jaringan association rules: node = item, edge = relasi IF→THEN
+    (difilter lift ≥ slider). Ukuran/warna node = seberapa sering item
+    muncul di rule (degree). Layout spring dengan seed tetap."""
     if rules.empty:
         return go.Figure().update_layout(title='Tidak ada rules')
     sub = rules[rules['Lift'] >= min_lift]
@@ -219,6 +238,8 @@ def fig_rule_network(rules, min_lift):
 
 
 def fig_rule_scatter(rules, min_lift):
+    """Scatter support vs confidence semua rule lolos slider; ukuran &
+    warna = lift, hover = teks rule lengkap."""
     if rules.empty:
         return go.Figure().update_layout(title='Tidak ada rules')
     sub = rules[rules['Lift'] >= min_lift].copy()
@@ -231,6 +252,8 @@ def fig_rule_scatter(rules, min_lift):
 
 
 def fig_anomaly_breakdown(df):
+    """Bar jumlah nasabah per kelas anomali (Normal / Rare / Data Error /
+    Risk Signal) — ringkasan hasil klasifikasi Phase 4."""
     order = ['Normal', 'Rare but Valid', 'Data Error / Quality', 'Risk Signal']
     counts = df['classification'].value_counts().reindex(order).fillna(0).reset_index()
     counts.columns = ['Klasifikasi', 'Jumlah']
@@ -243,6 +266,8 @@ def fig_anomaly_breakdown(df):
 
 
 def fig_anomaly_scatter(df, x, y):
+    """Scatter rasio perilaku (log-log) diwarnai kelas anomali; sumbu bisa
+    dipilih. Diurutkan agar titik anomali tergambar di atas titik normal."""
     d = df.sort_values('n_methods')  # normal di belakang, anomali di depan
     fig = px.scatter(
         d, x=x, y=y, color='classification',
@@ -258,6 +283,8 @@ def fig_anomaly_scatter(df, x, y):
 
 
 def fig_anomaly_by_segment(df):
+    """Stacked bar komposisi kelas anomali per segmen K-Means — visual
+    cross-reference Phase 2 × Phase 4 (risiko menggumpal di segmen mana)."""
     ct = (df.groupby(['KMeans_Segment', 'classification']).size()
           .reset_index(name='Jumlah'))
     fig = px.bar(ct, x='KMeans_Segment', y='Jumlah', color='classification',
@@ -272,6 +299,8 @@ def fig_anomaly_by_segment(df):
 # KPI cards
 # ════════════════════════════════════════════════════════════
 def kpi_card(title, value, sub, color):
+    """Kartu KPI kecil (judul, angka besar berwarna, subjudul) untuk baris
+    ringkasan di atas dashboard."""
     return html.Div([
         html.Div(title, style={'fontSize': '13px', 'color': '#555'}),
         html.Div(value, style={'fontSize': '30px', 'fontWeight': '700',
@@ -286,6 +315,10 @@ def kpi_card(title, value, sub, color):
 # APP
 # ════════════════════════════════════════════════════════════
 def build_app():
+    """Rakit aplikasi Dash lengkap: muat data, hitung KPI, susun layout
+    3 tab (Segmentasi / Association Rules / Anomali), dan daftarkan
+    callback interaktif. Dipisah dari run_dashboard agar bisa di-smoke-test
+    tanpa menyalakan server."""
     df, rules = load_dashboard_data()
     app = Dash(__name__)
     app.title = 'Banking KDD Dashboard'
@@ -318,7 +351,7 @@ def build_app():
         html.Div([
             kpi_card('Total Nasabah', f'{n_total:,}', 'records dianalisis', '#1f3a5f'),
             kpi_card('Segmen', f'{n_seg}', 'profil bernama (K-Means)', '#2ecc71'),
-            kpi_card('Association Rules', f'{n_rules}', 'non-trivial, lift > 1.4', '#e67e22'),
+            kpi_card('Association Rules', f'{n_rules}', 'non-trivial (lift ≥ 1.4)', '#e67e22'),
             kpi_card('Anomali Konsensus', f'{n_anom}', '≥2 metode setuju', '#9b59b6'),
             kpi_card('Risk Signal', f'{n_risk}', 'perlu eskalasi', '#e74c3c'),
         ], style={'display': 'flex', 'gap': '12px', 'padding': '16px 20px',
@@ -465,6 +498,7 @@ def build_app():
 
 
 def run_dashboard(host='127.0.0.1', port=8050, debug=False):
+    """Bangun aplikasi lalu jalankan server Dash (blocking) di host:port."""
     app = build_app()
     print(f"\n🚀 Dashboard berjalan di http://{host}:{port}  (Ctrl+C untuk stop)")
     app.run(host=host, port=port, debug=debug)
