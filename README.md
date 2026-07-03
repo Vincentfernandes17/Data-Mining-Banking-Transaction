@@ -41,7 +41,7 @@ Dua konsekuensi yang menentukan desain:
 | **1. Preprocessing** | Cleaning, validasi, feature engineering, binning, encoding, scaling, feature selection (korelasi + Mutual Information/entropi) | Dataset bersih + 3 rasio perilaku; bukti independensi fitur |
 | **2. Clustering** | K-Means, DBSCAN, Hierarchical (3 linkage); Elbow + Silhouette; validasi feature-selection (manual vs exhaustive otomatis) | 3 segmen bernama (sil 0.57); seleksi otomatis mengonfirmasi 3 rasio (#1 dari 286); profil segmen diperkaya demografi |
 | **3. Association Rule Mining** | Apriori (Support, Confidence, Lift) | 82 rule non-trivial (lift 1.40–1.66) + interpretasi bisnis |
-| **4. Anomaly Detection** | IQR, Z-Score, Isolation Forest + cross-reference | 252 risk-signal konsensus; cross-ref DBSCAN noise & segmen |
+| **4. Anomaly Detection** | IQR **skew-adjusted** (medcouple), **Modified** Z-Score (median/MAD), Isolation Forest + threshold **gap**; versi standar tetap dihitung sebagai pembanding sistematis | 446 anomali konsensus ≥2 metode (255 *risk signal*); cross-ref DBSCAN noise & segmen |
 
 ### 3 Segmen Nasabah (K-Means, K=3)
 
@@ -61,7 +61,9 @@ Banking_Transaction/
 ├── config.py                ← Konstanta & parameter
 ├── requirements.txt
 ├── README.md
-├── Laporan_Knowledge_Discovery.md   ← laporan naratif (Phase 5)
+├── Laporan_Knowledge_Discovery.md   ← laporan naratif bisnis (Phase 5)
+├── Laporan_Teknis.md                ← laporan teknis implementasi (arsitektur, kode, parameter)
+├── Laporan_Teknis.docx              ← versi Word laporan teknis (siap kumpul)
 ├── src/
 │   ├── preprocess.py        ← Phase 1
 │   ├── clustering.py        ← Phase 2
@@ -77,8 +79,8 @@ Banking_Transaction/
 └── outputs/
     ├── phase1/  ← EDA, korelasi, MI, outlier
     ├── phase2/  ← scree (bukti PCA), feature-selection comparison, elbow/silhouette, scatter, dendrogram, profil + demografi
-    ├── phase3/  ← distribusi support, scatter & bar rules, top_rules.csv
-    └── phase4/  ← method overlap, anomaly scatter, anomaly_report.csv
+    ├── phase3/  ← distribusi support, scatter & bar rules, top_rules.csv + rules_all.csv
+    └── phase4/  ← standar vs modified, gap IsoForest, method overlap, anomaly scatter, anomaly_report.csv
 ```
 
 ---
@@ -110,6 +112,9 @@ python main.py --phase 5     # lalu buka http://127.0.0.1:8050
   outlier plot, distribusi) — `python main.py --phase 5`.
 - Knowledge Discovery Report: [`Laporan_Knowledge_Discovery.md`](Laporan_Knowledge_Discovery.md)
   — narasi bisnis lengkap yang menjawab pertanyaan sentral proyek.
+- Laporan Teknis: [`Laporan_Teknis.md`](Laporan_Teknis.md) (+ versi `.docx`)
+  — arsitektur pipeline, penjelasan kode per fase, matematika metode modified
+  (medcouple, MAD, gap), parameter & reproducibilitas.
 
 Semua plot disimpan otomatis ke `outputs/phaseN/` (backend matplotlib `Agg`,
 jadi pipeline tidak nge-freeze menunggu jendela plot). Urutan fase penting:

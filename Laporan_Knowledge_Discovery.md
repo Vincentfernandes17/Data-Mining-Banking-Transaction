@@ -203,32 +203,55 @@ sebelum dijadikan kebijakan.
 ## 5. Fase 4 — Deteksi Anomali & Outlier
 
 **Apa yang dilakukan:** tiga metode dijalankan dan dibandingkan secara sistematis,
-lalu disilangkan dengan hasil Fase 2.
+lalu disilangkan dengan hasil Fase 2. Atas masukan dosen, ketiganya memakai varian
+**modified** yang cocok untuk data condong (skewed); versi standar tetap dihitung
+sebagai pembanding sistematis.
 
-| Metode | Record ter-flag | Sudut pandang |
+### 5.1 Kenapa versi *modified*?
+
+Ketiga rasio perilaku condong berat ke kanan (skew 2–7), sedangkan metode standar
+diam-diam mengasumsikan distribusi simetris:
+
+| Metode | Versi standar (pembanding) | Versi modified (dipakai) | Ter-flag: standar → modified |
+|--------|----------------------------|--------------------------|-----------------------------:|
+| **IQR** | pagar tetap Q1/Q3 ± 1,5·IQR | pagar **menyesuaikan kemiringan** data (medcouple / *adjusted boxplot*) | 1.131 → **880** |
+| **Z-Score** | pakai mean & simpangan baku | pakai **median & MAD** yang tahan outlier (\|M\| > 3,5) | 264 → **1.070** |
+| **Isolation Forest** | asumsi manual "5% anomali" | threshold dari **gap terbesar antar skor** — ditentukan data | 250 → **25** |
+
+Tiga efek yang saling melengkapi: pagar IQR yang mengikuti bentuk distribusi
+berhenti menandai ekor kanan yang wajar (turun 1.131→880); Z-score robust justru
+menangkap penyimpangan yang sebelumnya lolos karena simpangan baku ikut membengkak
+oleh outlier itu sendiri (naik 264→1.070); dan Isolation Forest kini memotong tepat
+di "jurang" alami antar skor (gap **66× lipat** gap tipikal) — menyisakan **25
+anomali struktural paling ekstrem, yang semuanya juga dikonfirmasi kedua metode
+lain**. (Grafik: `standard_vs_modified.png`, `isoforest_gap.png`.)
+
+### 5.2 Hasil deteksi
+
+| Metode (modified) | Record ter-flag | Sudut pandang |
 |--------|----------------:|---------------|
-| **IQR** | 1.131 (22,6%) | outlier per fitur (kuartil) |
-| **Z-Score** | 264 (5,3%) | outlier per fitur (simpangan baku) |
-| **Isolation Forest** | 250 (5,0%) | outlier multivariat/struktural |
+| **IQR skew-adjusted** | 880 (17,6%) | outlier per fitur (kuartil, sadar-kemiringan) |
+| **Modified Z-Score** | 1.070 (21,4%) | outlier per fitur (median/MAD) |
+| **Isolation Forest + gap** | 25 (0,5%) | outlier multivariat/struktural paling ekstrem |
 
-**Konsensus:** 322 nasabah ditandai oleh **≥2 metode**, dan **192** oleh ketiga
+**Konsensus:** 446 nasabah ditandai oleh **≥2 metode**, dan **25** oleh ketiga
 metode sekaligus — ini anomali paling meyakinkan.
 
 **Cross-reference dengan Fase 2:**
-- **136 nasabah** ditandai anomali oleh metode statistik **dan** oleh DBSCAN
+- **203 nasabah** ditandai anomali oleh metode statistik **dan** oleh DBSCAN
   (density) — dua pendekatan berbeda yang sepakat → keyakinan tertinggi.
-- **51,5%** segmen *Liquidity-Stressed* dan **21,0%** segmen *Credit-Stressed*
-  adalah anomali, vs hanya beberapa persen pada Mainstream. **Risiko terkonsentrasi
-  di dua segmen kecil.**
+- **78,6%** segmen *Liquidity-Stressed* dan **22,8%** segmen *Credit-Stressed*
+  adalah anomali konsensus, vs hanya **0,4%** pada Mainstream. **Risiko
+  terkonsentrasi di dua segmen kecil.**
 
 **Klasifikasi tiap anomali** (semua 5.000 nasabah):
 
 | Klasifikasi | Jumlah | Arti |
 |-------------|-------:|------|
-| Normal | 3.869 | tidak menyimpang |
-| Rare but Valid | 401 | menyimpang tapi masih wajar |
-| Data Error / Quality | 478 | perlu verifikasi (mis. saldo akhir tak konsisten/negatif) |
-| **Risk Signal** | **252** | leverage/likuiditas ekstrem → **eskalasi** |
+| Normal | 3.496 | tidak menyimpang |
+| Rare but Valid | 647 | menyimpang tapi masih wajar |
+| Data Error / Quality | 602 | perlu verifikasi (mis. saldo akhir tak konsisten/negatif) |
+| **Risk Signal** | **255** | leverage/likuiditas ekstrem + dikuatkan ≥2 metode → **eskalasi** |
 
 **Catatan kualitas data:** 34,1% transaksi memiliki saldo-akhir yang tidak
 konsisten dengan tipe & jumlah transaksinya. Karena tersebar sangat merata, ini
@@ -237,7 +260,7 @@ sehingga kami laporkan terpisah, bukan sebagai 1.703 "error" individual.
 
 **Validasi label:** dataset menyertakan kolom `Anomaly` bawaan. Sesuai aturan
 proyek, label ini **tidak dipakai saat mining**, hanya untuk validasi akhir.
-Tingkat kehadiran label -1 di anomali kami (6,2%) ≈ rata-rata populasi (6,0%):
+Tingkat kehadiran label -1 di anomali kami (5,6%) ≈ rata-rata populasi (6,0%):
 artinya label bawaan **acak dan tidak selaras** dengan perilaku finansial — justru
 menguatkan bahwa anomali yang berarti adalah yang **berbasis perilaku**, bukan
 label sintetis.
@@ -274,7 +297,7 @@ label sintetis.
   bernama yang seimbang dan langsung bisa dinarasikan ke manajemen; DBSCAN unggul
   untuk *memisahkan* outlier, bukan untuk segmentasi utama.
 - **Anomali apa yang ditemukan & artinya?** Nasabah dengan pinjaman & transaksi
-  puluhan hingga ratusan kali lipat saldonya (252 *risk signal*). Dalam konteks
+  puluhan hingga ratusan kali lipat saldonya (255 *risk signal*). Dalam konteks
   bank nyata, ini sinyal **tekanan likuiditas / potensi gagal bayar** yang layak
   ditinjau.
 - **Dibanding domain lain?** Karena dataset ini transaksional & sintetis, kekuatan
@@ -289,7 +312,7 @@ label sintetis.
    utilisasi kronis >100% pada limit kecil — peluang penyesuaian limit & edukasi.
 2. **Pantau ketat** segmen *Liquidity-Stressed* (7%): leverage ekstrem; prioritas
    *early-warning* gagal bayar.
-3. **Eskalasi 252 *risk signal*** untuk peninjauan manual.
+3. **Eskalasi 255 *risk signal*** untuk peninjauan manual.
 4. **Audit kualitas data**: selidiki inkonsistensi saldo-akhir 34% pada sistem
    sumber.
 
