@@ -76,5 +76,11 @@ RANDOM_STATE = 42
 DBSCAN_MIN_SAMPLES = 10
 
 # Parameter Anomaly Detection (Phase 4)
-Z_THRESH       = 3.0
-IF_CONTAMINATION = 0.05
+# Catatan: metode RESMI memakai varian MODIFIED (revisi dosen) —
+# IQR skew-adjusted (medcouple), modified z-score (median/MAD), dan
+# Isolation Forest dengan threshold GAP antar skor (bukan contamination
+# manual). Versi standar tetap dihitung sebagai pembanding sistematis.
+Z_THRESH           = 3.0    # z-score KLASIK |z|>3 (pembanding)
+MODIFIED_Z_THRESH  = 3.5    # modified z-score |M|>3.5 (Iglewicz & Hoaglin)
+IF_CONTAMINATION   = 0.05   # contamination manual 5% (pembanding)
+IF_GAP_WINDOW      = (0.005, 0.15)  # jendela pencarian gap: 0.5%-15% skor teratas
