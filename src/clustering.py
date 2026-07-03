@@ -105,6 +105,9 @@ PROFILE_CATEGORICAL = [
 # LOAD
 # ════════════════════════════════════════════════════════════
 def load_clustering_data(path):
+    """Muat dataset_clustering.csv (output Phase 1), pastikan 3 fitur rasio
+    tersedia, dan cetak statistik + skewness sebagai bukti struktur data.
+    Mengembalikan (df, feats)."""
     df = pd.read_csv(path)
     feats = [c for c in CLUSTER_FEATURES if c in df.columns]
     if len(feats) < len(CLUSTER_FEATURES):
@@ -127,6 +130,13 @@ def load_clustering_data(path):
 # input jarak clustering. Alignment diverifikasi lewat kolom bersama.
 # ════════════════════════════════════════════════════════════
 def attach_categoricals(df):
+    """Tempelkan 6 kolom kategorikal dari dataset_arm.csv untuk MEMPERKAYA
+    profil segmen (bukan input jarak clustering).
+
+    Keamanan join by-index: jumlah baris harus sama DAN kolom bersama
+    'Transaction Type' harus cocok ≥99.9% — bila tidak, penempelan
+    dibatalkan dengan aman (profil kategorikal dilewati).
+    """
     arm_path = os.path.join(DATA_DIR, 'dataset_arm.csv')
     if not os.path.exists(arm_path):
         print("  dataset_arm.csv tidak ada → profil kategorikal dilewati.")
@@ -159,6 +169,10 @@ def attach_categoricals(df):
 # yang menjelaskan kenapa reduksi 11→9 tidak berguna di dataset ini.
 # ════════════════════════════════════════════════════════════
 def dimensionality_analysis(df, save_plots=True):
+    """Jalankan PCA sekali pada fitur kontinu mentah HANYA sebagai bukti:
+    scree plot datar (~1/n variance per komponen) = fitur independen = tidak
+    ada redundansi untuk dikompres → PCA dibuang dari pipeline. Menyimpan
+    pca_why_not_used.png."""
     raw_cont = [c for c in RAW_CONTINUOUS if c in df.columns]
 
     X = StandardScaler().fit_transform(df[raw_cont])
@@ -201,6 +215,9 @@ def dimensionality_analysis(df, save_plots=True):
 # Kalau pencarian otomatis mendarat di 3 rasio yang sama → konfirmasi data-driven.
 # ════════════════════════════════════════════════════════════
 def _winsor_scale(df, cols):
+    """Helper: winsorize ekor atas (WINSOR_LIMIT) lalu StandardScaler —
+    transformasi ruang fitur yang sama dengan pipeline utama, dipakai
+    berulang di feature_selection_comparison."""
     Xw = df[cols].copy()
     for c in cols:
         Xw[c] = winsorize(Xw[c], limits=[0, WINSOR_LIMIT])
@@ -208,6 +225,9 @@ def _winsor_scale(df, cols):
 
 
 def _kmeans_silhouette(X, k=BEST_K, n_init=N_INIT, sample=None):
+    """Helper: fit K-Means lalu kembalikan silhouette score-nya.
+    `sample` opsional untuk silhouette tersampel (lebih cepat); default None
+    = dihitung penuh pada seluruh baris agar sebanding dengan angka final."""
     km = KMeans(n_clusters=k, random_state=RANDOM_STATE, n_init=n_init).fit(X)
     if sample:
         return silhouette_score(X, km.labels_, sample_size=min(sample, len(X)),
@@ -216,6 +236,14 @@ def _kmeans_silhouette(X, k=BEST_K, n_init=N_INIT, sample=None):
 
 
 def feature_selection_comparison(df, ratio_feats, save_plots=True):
+    """Validasi kuantitatif pilihan fitur manual vs alternatif otomatis.
+
+    Empat set fitur dibandingkan silhouette-nya (K-Means, K=BEST_K):
+    (1) semua fitur mentah, (2) PCA 80% variance, (3) kombinasi 3-fitur
+    TERBAIK dari exhaustive search 286 kombinasi, (4) 3 rasio domain.
+    Bagian paling lama Phase 2 (~5 menit: 286× K-Means + silhouette penuh
+    5000 baris). Menyimpan bar chart + CSV untuk laporan & dashboard.
+    """
     raw = [c for c in RAW_CONTINUOUS if c in df.columns]
     pool = raw + ratio_feats
     print("\n=== FEATURE SELECTION COMPARISON (domain manual vs otomatis) ===")
@@ -292,6 +320,9 @@ def feature_selection_comparison(df, ratio_feats, save_plots=True):
 # Outlier ekstrem TIDAK dihapus — disimpan untuk diinvestigasi di Phase 4.
 # ════════════════════════════════════════════════════════════
 def prepare_features(df, feats, winsor_limit=WINSOR_LIMIT):
+    """Siapkan ruang fitur clustering: winsorize ekor atas 2% (outlier TIDAK
+    dihapus — investigasinya di Phase 4) lalu StandardScaler. Mengembalikan
+    DataFrame ter-skala (mean≈0, std≈1) yang dipakai SEMUA algoritma."""
     Xw = df[feats].copy()
     print(f"\n=== Winsorization (cap {winsor_limit*100:.0f}% ekor atas) ===")
     for c in feats:
@@ -311,6 +342,13 @@ def prepare_features(df, feats, winsor_limit=WINSOR_LIMIT):
 # ELBOW METHOD & SILHOUETTE SCORE
 # ════════════════════════════════════════════════════════════
 def find_optimal_k(X_scaled, k_range=K_RANGE, save_plots=True):
+    """Tentukan K optimal via Elbow (WCSS) + Silhouette untuk K=2..10.
+
+    K final = BEST_K (3), dipilih atas dasar domain: silhouette-nya tetap
+    tinggi DAN memunculkan segmen ketiga (liquidity-stressed) yang lebih
+    actionable daripada K=2 — justifikasi dicetak & digambar (garis hijau
+    di elbow_silhouette.png). Mengembalikan (BEST_K, daftar silhouette).
+    """
     wcss, sil = [], []
     print("\n=== Elbow Method & Silhouette Score ===")
     for k in k_range:
@@ -382,6 +420,9 @@ def name_segments(df, feats, cluster_col):
 # K-MEANS
 # ════════════════════════════════════════════════════════════
 def run_kmeans(df, X_scaled, feats, best_k, save_plots=True):
+    """K-Means final pada K terpilih + dua visual: scatter pasangan rasio
+    (z-score) dan proyeksi t-SNE 2D (langkah tunggal terlama kedua, ~30-60
+    dtk). Menambah kolom KMeans_Cluster; mengembalikan (df, silhouette)."""
     km = KMeans(n_clusters=best_k, random_state=RANDOM_STATE, n_init=N_INIT)
     df['KMeans_Cluster'] = km.fit_predict(X_scaled)
     sil = silhouette_score(X_scaled, df['KMeans_Cluster'])
@@ -426,6 +467,13 @@ def run_kmeans(df, X_scaled, feats, best_k, save_plots=True):
 # CLUSTER PROFILING — nilai ASLI + NAMA segmen
 # ════════════════════════════════════════════════════════════
 def profile_clusters(df, feats, cluster_col, save_plots=True):
+    """Profil tiap cluster dalam NILAI ASLI (median — robust untuk skew).
+
+    Menampilkan 3 rasio + konteks finansial (saldo/limit/pinjaman/transaksi/
+    umur) + ukuran segmen + NAMA segmen data-driven; cross-check label
+    Anomaly per segmen; bar chart profil (log). Diakhiri profil kategorikal
+    (profile_categoricals). Mengembalikan (prof, names).
+    """
     names = name_segments(df, feats, cluster_col)
     ctx = [c for c in PROFILE_CONTEXT if c in df.columns]
 
@@ -486,6 +534,10 @@ def profile_clusters(df, feats, cluster_col, save_plots=True):
 # "spread" = selisih proporsi maks–min satu kategori antar cluster (poin persen).
 # ════════════════════════════════════════════════════════════
 def profile_categoricals(df, cluster_col, names, save_plots=True, spread_thresh=10.0):
+    """Komposisi demografis/kategorikal per segmen (crosstab %, 100% stacked
+    bar). 'spread' = selisih proporsi maks-min satu kategori antar cluster;
+    ≥spread_thresh pp dianggap MEMBEDAKAN. Temuan jujur di dataset ini:
+    demografi ~seragam antar segmen → segmen dibentuk PERILAKU finansial."""
     cats = [c for c in PROFILE_CATEGORICAL if c in df.columns]
     if not cats:
         return
@@ -544,6 +596,13 @@ def profile_categoricals(df, cluster_col, names, save_plots=True, spread_thresh=
 # eps dicari otomatis lewat knee k-distance + target noise 2–15%.
 # ════════════════════════════════════════════════════════════
 def run_dbscan(df, X_scaled, feats, min_samples=DBSCAN_MIN_SAMPLES, save_plots=True):
+    """DBSCAN dengan eps dicari OTOMATIS: coba kandidat 0.20-2.00, pilih
+    yang persentase noise-nya paling dekat ~5% dalam rentang wajar 2-15%.
+
+    Noise (-1) = nasabah berperilaku ekstrem → diumpankan ke Phase 4 sebagai
+    sudut pandang density. Menyimpan k-distance plot & scatter noise.
+    Mengembalikan (df, n_clusters, n_noise, best_eps).
+    """
     Xv = X_scaled.values
     nbrs = NearestNeighbors(n_neighbors=min_samples).fit(Xv)
     dist, _ = nbrs.kneighbors(Xv)
@@ -622,6 +681,10 @@ def run_dbscan(df, X_scaled, feats, min_samples=DBSCAN_MIN_SAMPLES, save_plots=T
 # Pada n=5000 dendrogram penuh terlalu berat → sampel 1000 baris.
 # ════════════════════════════════════════════════════════════
 def run_hierarchical(df, X_scaled, best_k, save_plots=True):
+    """Hierarchical clustering: bandingkan dendrogram 3 linkage (ward /
+    complete / average; sampel 1000 baris agar dendrogram terbaca), lalu
+    potong Ward pada K untuk label final SELURUH data.
+    Mengembalikan (df, silhouette)."""
     rng = np.random.RandomState(RANDOM_STATE)
     idx = rng.choice(len(X_scaled), size=min(1000, len(X_scaled)), replace=False)
     Xs = X_scaled.values[idx]
@@ -656,6 +719,9 @@ def run_hierarchical(df, X_scaled, best_k, save_plots=True):
 # COMPARISON — silhouette dihitung di ruang yang SAMA (X_scaled)
 # ════════════════════════════════════════════════════════════
 def compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise):
+    """Tabel perbandingan 3 algoritma pada ruang fitur yang SAMA: jumlah
+    cluster, noise, dan silhouette (DBSCAN dihitung tanpa noise agar adil).
+    Mencetak kesimpulan pemilihan metode."""
     mask = df['DBSCAN_Cluster'] != -1
     if df.loc[mask, 'DBSCAN_Cluster'].nunique() > 1:
         sil_db = round(silhouette_score(X_scaled[mask.values],
@@ -684,6 +750,8 @@ def compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise):
 # SAVE — dataset berlabel cluster untuk Phase 4
 # ════════════════════════════════════════════════════════════
 def save_clustered(df, names):
+    """Simpan dataset + label ketiga algoritma + nama segmen K-Means ke
+    dataset_clustered.csv — input Phase 4."""
     df = df.copy()
     df['KMeans_Segment'] = df['KMeans_Cluster'].map(names)
     out = os.path.join(DATA_DIR, 'dataset_clustered.csv')
@@ -698,6 +766,10 @@ def save_clustered(df, names):
 # MAIN
 # ════════════════════════════════════════════════════════════
 def run_clustering(path=None):
+    """Jalankan seluruh pipeline Phase 2 (9 langkah) dan kembalikan df
+    berlabel: load → tempel kategorikal → bukti PCA → validasi feature
+    selection → winsorize+scale → elbow/silhouette → K-Means + profil →
+    DBSCAN + Hierarchical + profil → perbandingan & simpan."""
     if path is None:
         path = os.path.join(DATA_DIR, 'dataset_clustering.csv')
 
