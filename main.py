@@ -6,7 +6,7 @@ Cara pakai di VSCode terminal:
     python main.py --phase 2    # Phase 2: Clustering
     python main.py --phase 3    # Phase 3: ARM
     python main.py --phase 4    # Phase 4: Anomaly
-    python main.py --phase 5    # Phase 4: Visualization
+    python main.py --phase 5    # Phase 5: Visualization (dashboard)
     python main.py --phase all  # Semua phase berurutan
 """
 
@@ -33,7 +33,12 @@ os.makedirs(OUTPUT_DIR, exist_ok=True)
 
 
 def main(phase: str):
+    """Jalankan fase pipeline yang diminta ('1'-'5' atau 'all').
 
+    Import modul fase dilakukan LAZY (di dalam if) supaya menjalankan satu
+    fase tidak menarik dependency fase lain. Mode 'all' menjalankan fase 1-4
+    berurutan; dashboard (fase 5) sengaja tidak ikut karena server blocking.
+    """
     if phase in ('1', 'all'):
         print("\n" + "="*55)
         print("  Menjalankan Phase 1: Preprocessing")

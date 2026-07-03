@@ -47,6 +47,7 @@ os.makedirs(PHASE1_OUTPUT_DIR, exist_ok=True)
 # kerjakan atau kita "data mine" dari datanya.
 
 def load_data(path):
+    """Baca CSV dataset mentah dan cetak dimensinya sebagai sanity-check."""
     data_set = pd.read_csv(path)
     print(f"Dataset loaded: {data_set.shape[0]:,} rows x {data_set.shape[1]} columns")
     return data_set
@@ -60,6 +61,15 @@ def load_data(path):
 # selection pada tahap selanjutnya.
 
 def run_eda(data_set, save_plots=True):
+    """EDA lengkap: struktur data, distribusi numerik/kategorikal (histogram,
+    boxplot, countplot), scatter finansial, cek null & duplikat, korelasi
+    mentah, dan rasio label Anomaly.
+
+    Output terpenting: TEMUAN STRUKTUR DATA — mayoritas fitur numerik
+    independen & near-uniform (hanya segelintir pasangan berkorelasi, itupun
+    turunan) → menentukan keputusan PCA & feature engineering fase berikutnya.
+    Semua plot disimpan ke outputs/phase1/.
+    """
     print("\n-- Head --"); print(data_set.head())
     print("\n-- Tail --"); print(data_set.tail())
     print("\n-- Info --"); data_set.info()
@@ -199,6 +209,13 @@ def run_eda(data_set, save_plots=True):
 # DATA VALIDATION
 
 def validate_data(data_set):
+    """Validasi logika domain per aturan bisnis, dengan keputusan transparan.
+
+    Empat pemeriksaan: (1) konsistensi saldo-akhir vs tipe & jumlah transaksi
+    — di-cross-check dengan label Anomaly, terbukti TIDAK berkorelasi sehingga
+    baris tidak dihapus; (2) rentang umur; (3) over-limit kartu — dipertahankan
+    sebagai sinyal risiko untuk Phase 4; (4) rentang suku bunga.
+    """
     data_set = data_set.copy()
 
     # Checking Balance Consistency
@@ -259,6 +276,15 @@ def validate_data(data_set):
 # yang ada, seperti merubah, membuat yang baru, atau
 # mengeliminasi yang tidak diperlukan.
 def engineer_features(data_set):
+    """Feature engineering: fitur temporal + 3 RASIO PERILAKU (kunci Phase 2).
+
+    Parse 8 kolom tanggal → Account_Age_Years & Days_Since_Last_Transaction
+    (reference date = tanggal maksimum dataset). Lalu buat CC_Utilization,
+    Transaction_to_Balance_Ratio, Loan_to_Balance_Ratio — rasio dua fitur
+    uniform menghasilkan distribusi BERSTRUKTUR (skew tinggi) yang membuat
+    clustering bermakna. Pembagian nol/inf → NaN → diisi median.
+    Mengembalikan (data_set, date_cols).
+    """
     data_set = data_set.copy()
 
     date_cols = [
@@ -335,6 +361,13 @@ def engineer_features(data_set):
 #   MinMaxScaler untuk fitur yang distribusinya normal
 
 def detect_outliers_prescaling(data_clean, save_plots=True):
+    """Deteksi outlier IQR per fitur SEBELUM scaling — untuk memilih scaler.
+
+    Outlier TIDAK dihapus (bisa jadi sinyal Phase 4); hasilnya dipakai memilih
+    scaler per fitur: RobustScaler bila outlier >5% atau |skew|>1, selain itu
+    MinMaxScaler. Mengembalikan (robust_cols, minmax_cols) + boxplot berwarna
+    sesuai rekomendasi.
+    """
     numeric_cols = [c for c in [
         'Account Balance', 'Transaction Amount', 'Loan Amount',
         'Credit Card Balance', 'Rewards Points',
@@ -420,6 +453,9 @@ def detect_outliers_prescaling(data_clean, save_plots=True):
 #   Days_Since_Last_Transaction. Menyimpan keduanya = redundan.
 
 def drop_irrelevant_columns(data_set, date_cols):
+    """Buang kolom yang pasti tak dipakai mining: PII (privasi), surrogate
+    key (tanpa makna semantik), dan kolom tanggal mentah (sudah diekstrak ke
+    fitur temporal). Justifikasi lengkap di blok komentar di atas."""
     cols_to_drop = [c for c in [
         'Customer ID','First Name','Last Name','Address','Email',
         'Contact Number','TransactionID','Loan ID','CardID','Feedback ID',
@@ -490,6 +526,12 @@ AGE_LABELS = ['Young Adult',     # 18–24: pelajar / awal kerja, aset rendah
 
 
 def bin_features(data_clean):
+    """Binning kontinu → kategorikal dengan AMBANG DOMAIN TETAP (bukan
+    kuantil/equal-width) supaya reproducible & interpretable — persiapan
+    utama Apriori Phase 3. Enam kolom kategori dibuat (Age_Group,
+    Balance_Bucket, Transaction_Size, Loan_Size, Rate_Category,
+    CC_Utilization_Category); referensi tiap ambang ada di blok komentar
+    panjang di atas fungsi ini."""
     data_clean = data_clean.copy()
 
     # Umur → tahap hidup finansial (lihat referensi paper di atas)
@@ -546,6 +588,9 @@ def bin_features(data_clean):
 # 2 > 1 (asumsi ordinalitas yang tidak tepat).
 
 def encode_features(data_clean):
+    """Encoding kategorikal → numerik: Label Encoding untuk kolom biner
+    (encoder TERPISAH per kolom agar mapping tidak saling timpa) dan One-Hot
+    untuk kolom nominal >2 kategori (hindari asumsi ordinal 2>1)."""
     data_clean = data_clean.copy()
 
     # Label encoding untuk variabel biner/ordinal.
@@ -579,6 +624,9 @@ def encode_features(data_clean):
 #   menghasilkan range [0,1] yang seragam
 
 def normalize_features(data_encoded, robust_cols, minmax_cols):
+    """Scaling per fitur mengikuti rekomendasi detect_outliers_prescaling:
+    RobustScaler (median/IQR, kebal outlier) untuk fitur skewed/ber-outlier,
+    MinMaxScaler ([0,1]) untuk fitur berdistribusi normal."""
     data_encoded = data_encoded.copy()
 
     # Filter hanya kolom yang ada di data_encoded
@@ -607,6 +655,14 @@ def normalize_features(data_encoded, robust_cols, minmax_cols):
 # 2. Mutual Information — ukur informativeness berbasis entropi
 
 def feature_selection(data_encoded, save_plots=True):
+    """Feature selection dua metode sesuai rubrik (korelasi + entropi).
+
+    (1) Correlation matrix → deteksi multikolinearitas: ditemukan korelasi
+    sempurna Credit Card Balance ↔ Minimum Payment Due (r≈1) → salah satu
+    dieliminasi. (2) Mutual Information terhadap label Anomaly → MI ≈ 0 di
+    semua fitur = anomali TIDAK terdeteksi univariat, harus multivariat
+    (dikerjakan di Phase 4).
+    """
     corr_cols = [c for c in [
         'Age','Account Balance','Transaction Amount',
         'Account Balance After Transaction','Loan Amount',
@@ -670,6 +726,13 @@ def feature_selection(data_encoded, save_plots=True):
 # justru punya struktur (skew tinggi) sehingga segmentasi jadi bermakna.
 
 def save_datasets(data_encoded, data_clean):
+    """Ekspor dua dataset turunan untuk fase berikutnya.
+
+    dataset_clustering.csv — 3 rasio input + kolom konteks profiling, dalam
+    NILAI ASLI (winsorize+scaling jadi tanggung jawab Phase 2 agar profiling
+    tetap interpretable). dataset_arm.csv — 14 kolom kategorikal hasil
+    binning untuk Apriori Phase 3.
+    """
     # Dataset untuk Clustering (Phase 2) — diambil dari data_clean (NILAI ASLI)
     clustering_cols = [c for c in [
         # --- 3 FITUR INPUT CLUSTERING (rasio perilaku) ---
@@ -721,6 +784,10 @@ def save_datasets(data_encoded, data_clean):
 # MAIN PIPELINE
 
 def run_preprocessing(raw_path=RAW_PATH):
+    """Jalankan seluruh pipeline Phase 1 berurutan: load → EDA → validasi →
+    feature engineering → drop kolom → binning → outlier pre-scaling →
+    encoding → scaling → feature selection → ekspor dataset.
+    Mengembalikan (data_encoded, data_clean)."""
     print("=" * 55)
     print("  PHASE 1 - Data Understanding & Preprocessing")
     print("=" * 55)
