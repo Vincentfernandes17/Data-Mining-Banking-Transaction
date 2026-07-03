@@ -65,6 +65,9 @@ MIN_LIFT       = 1.4    # hanya ambil rules yang non-trivial
 # ════════════════════════════════════════════════════════════
 
 def load_arm_data(path):
+    """Muat dataset ARM (hasil binning Phase 1) dan pastikan semua kolom
+    bertipe string/kategorikal. Mencetak distribusi nilai per kolom sebagai
+    sanity-check sebelum encoding."""
     df_arm = pd.read_csv(path)
 
     # Pastikan semua kolom bertipe string (kategorikal)
@@ -130,6 +133,11 @@ def encode_for_apriori(df_arm):
 # ════════════════════════════════════════════════════════════
 
 def find_frequent_itemsets(df_encoded, min_support=MIN_SUPPORT):
+    """Jalankan Apriori pada data one-hot dan kembalikan frequent itemsets.
+
+    Tanpa max_len — panjang itemset dibiarkan bebas. Juga menyimpan plot
+    distribusi support (support_distribution.png) untuk laporan.
+    """
     print(f"=== Mencari Frequent Itemsets (min_support={min_support}) ===")
 
     frequent_itemsets = apriori(
@@ -181,7 +189,12 @@ def find_frequent_itemsets(df_encoded, min_support=MIN_SUPPORT):
 def generate_rules(frequent_itemsets,
                    min_confidence=MIN_CONFIDENCE,
                    min_lift=MIN_LIFT):
+    """Generate association rules dari frequent itemsets + filter kualitas.
 
+    Filter: lift ≥ min_lift (non-trivial), confidence ≥ min_confidence,
+    dan buang rule sepele (antecedent = consequent). Menambahkan kolom
+    string readable dan mengurutkan berdasarkan lift menurun.
+    """
     print(f"=== Generate Association Rules ===")
     print(f"min_confidence = {min_confidence}")
     print(f"min_lift       = {min_lift}")
@@ -278,6 +291,9 @@ def auto_tune_support(df_encoded, target_rules=10,
 # ════════════════════════════════════════════════════════════
 
 def visualize_rules(rules, top_n=15, save_plots=True):
+    """Buat 3 visual rules: scatter support-confidence (warna=lift), bar
+    lift top-N, dan heatmap rata-rata lift per bucket support×confidence.
+    Semua disimpan ke outputs/phase3/."""
     if len(rules) == 0:
         print("Tidak ada rules untuk divisualisasikan.")
         return
@@ -353,8 +369,15 @@ def visualize_rules(rules, top_n=15, save_plots=True):
 # ════════════════════════════════════════════════════════════
 
 def export_rules(rules, top_n=20):
-    top_rules = rules.head(top_n).copy()
-    top_rules = top_rules[[
+    """Simpan tabel rules ke dua CSV deliverable.
+
+    - rules_all.csv : SEMUA rule yang lolos filter (sumber angka "total rule"
+      di laporan & KPI dashboard — supaya konsisten, tidak cuma top 20).
+    - top_rules.csv : top_n teratas berdasarkan lift, untuk tabel ringkas.
+    Kolom di-rename ke format deliverable (Antecedent IF / Consequent THEN).
+    Mengembalikan DataFrame top_n.
+    """
+    export = rules[[
         'antecedents_str', 'consequents_str',
         'support', 'confidence', 'lift'
     ]].rename(columns={
@@ -363,14 +386,19 @@ def export_rules(rules, top_n=20):
         'support'         : 'Support',
         'confidence'      : 'Confidence',
         'lift'            : 'Lift'
-    })
-    top_rules[['Support','Confidence','Lift']] = \
-        top_rules[['Support','Confidence','Lift']].round(4)
-    top_rules.insert(0, 'Rank', range(1, len(top_rules)+1))
+    }).copy()
+    export[['Support','Confidence','Lift']] = \
+        export[['Support','Confidence','Lift']].round(4)
+    export.insert(0, 'Rank', range(1, len(export)+1))
 
+    all_path = os.path.join(OUTPUT_DIR, 'rules_all.csv')
+    export.to_csv(all_path, index=False)
+    print(f"\n✅ SEMUA {len(export)} rules tersimpan → {all_path}")
+
+    top_rules = export.head(top_n)
     output_path = os.path.join(OUTPUT_DIR, 'top_rules.csv')
     top_rules.to_csv(output_path, index=False)
-    print(f"\n✅ Top {top_n} rules tersimpan → {output_path}")
+    print(f"✅ Top {top_n} rules tersimpan → {output_path}")
     print(top_rules.to_string(index=False))
 
     return top_rules
@@ -427,6 +455,8 @@ ITEM_MEANING_MAP = {
 }
 
 def pretty_item(item):
+    """Terjemahkan satu item 'Kolom=Nilai' ke frasa bisnis Indonesia;
+    fallback ke format readable bila tidak ada di ITEM_MEANING_MAP."""
     if item in ITEM_MEANING_MAP:
         return ITEM_MEANING_MAP[item]
     if '=' in item:
@@ -435,9 +465,12 @@ def pretty_item(item):
     return item.replace('_', ' ')
 
 def pretty_itemset(itemset):
+    """Gabungkan seluruh item sebuah itemset menjadi satu frasa bisnis."""
     return ', '.join(pretty_item(i) for i in sorted(itemset))
 
 def infer_business_theme(items):
+    """Tebak tema bisnis sebuah rule (risiko / layanan / nasabah sehat /
+    umum) dari item-item yang terlibat — untuk mengelompokkan interpretasi."""
     items = set(items)
 
     risk_items = {
@@ -474,6 +507,9 @@ def infer_business_theme(items):
 # ════════════════════════════════════════════════════════════
 
 def print_business_interpretation(rules, top_n=10):
+    """Cetak interpretasi bisnis terstruktur (tema, IF/THEN dalam bahasa
+    bisnis, makna support/confidence/lift) untuk top_n rules — memenuhi
+    deliverable 'business commentary' rubrik Phase 3."""
     print("\n" + "="*60)
     print("  BUSINESS INTERPRETATION — TOP RULES")
     print("="*60)
@@ -511,6 +547,12 @@ def print_business_interpretation(rules, top_n=10):
 # ════════════════════════════════════════════════════════════
 
 def run_arm(path=None):
+    """Jalankan seluruh pipeline Phase 3 dan kembalikan DataFrame rules.
+
+    Urutan: load → encode one-hot → auto-tune min_support hingga ≥10 rules
+    → summary → visualisasi → export CSV (semua + top-20) → interpretasi
+    bisnis top-10.
+    """
     if path is None:
         path = os.path.join(DATA_DIR, 'dataset_arm.csv')
 
