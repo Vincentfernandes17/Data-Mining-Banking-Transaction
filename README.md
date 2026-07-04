@@ -62,6 +62,7 @@ Banking_Transaction/
 ├── requirements.txt
 ├── README.md
 ├── Laporan_Knowledge_Discovery.md   ← laporan naratif bisnis (Phase 5)
+├── Laporan_Knowledge_Discovery.docx ← versi Word laporan naratif (siap kumpul)
 ├── Laporan_Teknis.md                ← laporan teknis implementasi (arsitektur, kode, parameter)
 ├── Laporan_Teknis.docx              ← versi Word laporan teknis (siap kumpul)
 ├── src/
@@ -111,7 +112,7 @@ python main.py --phase 5     # lalu buka http://127.0.0.1:8050
 - Dashboard interaktif Plotly Dash: `src/dashboard.py` (cluster map, rule network,
   outlier plot, distribusi) — `python main.py --phase 5`.
 - Knowledge Discovery Report: [`Laporan_Knowledge_Discovery.md`](Laporan_Knowledge_Discovery.md)
-  — narasi bisnis lengkap yang menjawab pertanyaan sentral proyek.
+  (+ versi `.docx`) — narasi bisnis lengkap yang menjawab pertanyaan sentral proyek.
 - Laporan Teknis: [`Laporan_Teknis.md`](Laporan_Teknis.md) (+ versi `.docx`)
   — arsitektur pipeline, penjelasan kode per fase, matematika metode modified
   (medcouple, MAD, gap), parameter & reproducibilitas.
