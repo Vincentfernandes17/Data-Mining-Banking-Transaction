@@ -1,0 +1,9 @@
+Metric,Value
+Base rate label -1 (populasi),6.0
+Base rate label -1 (di anomali ≥2),5.61
+Precision (konsensus vs label),0.0561
+Recall (konsensus vs label),0.0833
+F1-score,0.067
+TP,25.0
+FP,421.0
+FN,275.0

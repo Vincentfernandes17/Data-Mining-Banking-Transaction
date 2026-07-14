@@ -574,9 +574,38 @@ def validate_against_label(df, anomalies):
     flagged_rate = df[consensus]['Anomaly'].eq(-1).mean() * 100 if consensus.sum() else 0
     print(f"\nBase rate label -1 keseluruhan : {base_rate:.1f}%")
     print(f"Base rate label -1 di anomali  : {flagged_rate:.1f}%")
+
+    # Precision/Recall/F1 memakai label -1 sebagai kelas positif "ground truth"
+    # dan konsensus (≥2 metode) sebagai prediksi. Ini metrik yang diminta rubrik,
+    # sekaligus bukti kuantitatif bahwa label sintetis TIDAK selaras dgn perilaku.
+    tp = int((consensus & label_anom).sum())
+    fp = int((consensus & ~label_anom).sum())
+    fn = int((~consensus & label_anom).sum())
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall    = tp / (tp + fn) if (tp + fn) else 0.0
+    f1        = (2 * precision * recall / (precision + recall)
+                 if (precision + recall) else 0.0)
+    lift_vs_base = (flagged_rate / base_rate) if base_rate else float('nan')
+    print(f"\nPrecision (konsensus vs label) : {precision:.3f}  ({tp}/{tp+fp})")
+    print(f"Recall    (konsensus vs label) : {recall:.3f}  ({tp}/{tp+fn})")
+    print(f"F1-score                        : {f1:.3f}")
+    print(f"Lift keselarasan vs base rate  : {lift_vs_base:.2f}× "
+          f"(rate label di anomali / base rate)")
     print("Interpretasi: label 'Anomaly' dataset ini ~uniform & tidak terdeteksi "
           "secara univariat (lihat MI di Phase 1), jadi keselarasan rendah adalah "
           "WAJAR. Anomali kita berbasis PERILAKU finansial, bukan label sintetis.")
+
+    # Simpan ringkasan validasi label untuk laporan (Appendix D)
+    out = os.path.join(OUTPUT_DIR, 'label_validation.csv')
+    pd.DataFrame([
+        ('Base rate label -1 (populasi)',       round(base_rate, 2)),
+        ('Base rate label -1 (di anomali ≥2)',  round(flagged_rate, 2)),
+        ('Precision (konsensus vs label)',      round(precision, 4)),
+        ('Recall (konsensus vs label)',         round(recall, 4)),
+        ('F1-score',                            round(f1, 4)),
+        ('TP', tp), ('FP', fp), ('FN', fn),
+    ], columns=['Metric', 'Value']).to_csv(out, index=False)
+    print(f"✅ Ringkasan validasi label tersimpan → {out}")
 
 
 # ════════════════════════════════════════════════════════════
