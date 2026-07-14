@@ -1,0 +1,9 @@
+Metric,Param,Value
+"Silhouette Score (K-Means, K final)",3,0.571
+"Silhouette Score (Hierarchical Ward, K final)",3,0.4592
+Cophenetic Correlation (Ward),,0.7858
+Cophenetic Correlation (Complete),,0.8423
+Cophenetic Correlation (Average),,0.9149
+Adjusted Rand Index (K-Means vs Hierarchical),,0.5899
+DBSCAN clusters (eps auto),0.5,4.0
+DBSCAN noise points,0.5,274.0

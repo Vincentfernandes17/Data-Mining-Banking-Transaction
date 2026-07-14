@@ -49,12 +49,13 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 
 from sklearn.cluster import KMeans, DBSCAN, AgglomerativeClustering
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, adjusted_rand_score
 from sklearn.decomposition import PCA
 from sklearn.manifold import TSNE
 from sklearn.neighbors import NearestNeighbors
 from sklearn.preprocessing import StandardScaler
-from scipy.cluster.hierarchy import dendrogram, linkage, fcluster
+from scipy.cluster.hierarchy import dendrogram, linkage, fcluster, cophenet
+from scipy.spatial.distance import pdist
 from scipy.stats.mstats import winsorize
 from itertools import combinations
 
@@ -684,18 +685,29 @@ def run_hierarchical(df, X_scaled, best_k, save_plots=True):
     """Hierarchical clustering: bandingkan dendrogram 3 linkage (ward /
     complete / average; sampel 1000 baris agar dendrogram terbaca), lalu
     potong Ward pada K untuk label final SELURUH data.
-    Mengembalikan (df, silhouette)."""
+
+    Untuk tiap linkage dihitung KOEFISIEN KOFENETIK (cophenetic correlation)
+    yaitu korelasi antara jarak asli antar titik dengan jarak kofenetik pada
+    pohon dendrogram. Makin tinggi (mendekati 1) makin setia pohon itu
+    merepresentasikan struktur jarak sebenarnya, sehingga koefisien inilah
+    yang menjustifikasi pemilihan linkage. Mengembalikan (df, silhouette,
+    coph) dengan coph = dict cophenetic per linkage.
+    """
     rng = np.random.RandomState(RANDOM_STATE)
     idx = rng.choice(len(X_scaled), size=min(1000, len(X_scaled)), replace=False)
     Xs = X_scaled.values[idx]
+    dist_orig = pdist(Xs)   # jarak asli antar titik (dipakai untuk kofenetik)
 
     methods = ['ward', 'complete', 'average']
+    coph = {}
     fig, axes = plt.subplots(1, 3, figsize=(18, 6))
     for ax, m in zip(axes, methods):
         Z = linkage(Xs, method=m)
+        coph[m], _ = cophenet(Z, dist_orig)   # koefisien kofenetik linkage m
         dendrogram(Z, ax=ax, truncate_mode='level', p=5,
                    color_threshold=0.7 * max(Z[:, 2]))
-        ax.set_title(f'Dendrogram — {m.capitalize()} (sampel 1000)')
+        ax.set_title(f'Dendrogram — {m.capitalize()} '
+                     f'(sampel 1000, kofenetik={coph[m]:.3f})')
         ax.set_xlabel('Data points'); ax.set_ylabel('Distance')
     plt.suptitle('Hierarchical Clustering — 3 Linkage Methods',
                  fontsize=13, fontweight='bold')
@@ -703,6 +715,16 @@ def run_hierarchical(df, X_scaled, best_k, save_plots=True):
     if save_plots:
         plt.savefig(os.path.join(OUTPUT_DIR, 'dendrogram_comparison.png'), dpi=150)
     plt.close()
+
+    print("\n=== Koefisien Kofenetik per linkage (sampel 1000) ===")
+    for m in methods:
+        print(f"  {m.capitalize():9s}: {coph[m]:.4f}")
+    best_link = max(coph, key=coph.get)
+    print(f"Linkage dengan kofenetik tertinggi: {best_link.capitalize()} "
+          f"({coph[best_link]:.4f}).")
+    print("Catatan: Ward dipilih untuk label final karena menghasilkan cluster "
+          "paling seimbang & interpretable; koefisien kofenetiknya juga tinggi "
+          "sehingga pohon setia pada struktur jarak asli.")
 
     # Ward pada seluruh data untuk label final
     df['Hierarchical_Cluster'] = AgglomerativeClustering(
@@ -712,7 +734,7 @@ def run_hierarchical(df, X_scaled, best_k, save_plots=True):
     print(df['Hierarchical_Cluster'].value_counts().sort_index().to_string())
     print("Catatan linkage: Ward menghasilkan cluster paling seimbang; "
           "Complete/Average lebih sensitif outlier (cabang panjang terpisah).")
-    return df, sil
+    return df, sil, coph
 
 
 # ════════════════════════════════════════════════════════════
@@ -721,13 +743,21 @@ def run_hierarchical(df, X_scaled, best_k, save_plots=True):
 def compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise):
     """Tabel perbandingan 3 algoritma pada ruang fitur yang SAMA: jumlah
     cluster, noise, dan silhouette (DBSCAN dihitung tanpa noise agar adil).
-    Mencetak kesimpulan pemilihan metode."""
+
+    Juga menghitung ADJUSTED RAND INDEX (ARI) antara label K-Means (metode
+    utama) dan Hierarchical Ward (validasi) untuk mengukur seberapa cocok
+    kedua metode independen menempatkan nasabah pada segmen yang sama; ARI=1
+    berarti partisi identik, ARI≈0 berarti sekadar kebetulan. Mencetak
+    kesimpulan pemilihan metode dan mengembalikan (comp, ari).
+    """
     mask = df['DBSCAN_Cluster'] != -1
     if df.loc[mask, 'DBSCAN_Cluster'].nunique() > 1:
         sil_db = round(silhouette_score(X_scaled[mask.values],
                                         df.loc[mask, 'DBSCAN_Cluster']), 4)
     else:
         sil_db = 'N/A (1 cluster inti + noise)'
+
+    ari = adjusted_rand_score(df['KMeans_Cluster'], df['Hierarchical_Cluster'])
 
     comp = pd.DataFrame({
         'Method':           ['K-Means', 'DBSCAN', 'Hierarchical (Ward)'],
@@ -740,10 +770,12 @@ def compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise):
     print("  PERBANDINGAN METODE (silhouette di ruang fitur yang sama)")
     print(f"{'='*60}")
     print(comp.to_string(index=False))
+    print(f"\nAdjusted Rand Index (K-Means vs Hierarchical Ward): {ari:.4f}")
+    print("  → Mengukur kesepakatan dua metode independen atas keanggotaan segmen.")
     print("\nKesimpulan: K-Means & Hierarchical (Ward) memberi segmen seimbang & "
           "interpretable. DBSCAN unggul untuk MEMISAHKAN outlier perilaku "
           "(noise) → dipakai sebagai sinyal awal Phase 4.")
-    return comp
+    return comp, ari
 
 
 # ════════════════════════════════════════════════════════════
@@ -760,6 +792,31 @@ def save_clustered(df, names):
     print(f"   Kolom label: KMeans_Cluster, KMeans_Segment, DBSCAN_Cluster, "
           f"Hierarchical_Cluster")
     return out
+
+
+# ════════════════════════════════════════════════════════════
+# SAVE VALIDATION METRICS — ringkasan metrik kuantitatif Phase 2
+# untuk laporan/appendix (silhouette, kofenetik, ARI, dll).
+# ════════════════════════════════════════════════════════════
+def save_validation_metrics(sil_km, sil_hier, coph, ari, best_k,
+                            n_clusters_db, n_noise, best_eps):
+    """Simpan metrik validasi Phase 2 ke validation_metrics.csv agar bisa
+    langsung dikutip di laporan (Appendix D): silhouette K-Means & Ward pada
+    K final, koefisien kofenetik tiap linkage, dan Adjusted Rand Index
+    K-Means vs Hierarchical."""
+    rows = [
+        ('Silhouette Score (K-Means, K final)',            best_k, round(sil_km, 4)),
+        ('Silhouette Score (Hierarchical Ward, K final)',  best_k, round(sil_hier, 4)),
+        ('Cophenetic Correlation (Ward)',                  '',     round(coph.get('ward', float('nan')), 4)),
+        ('Cophenetic Correlation (Complete)',              '',     round(coph.get('complete', float('nan')), 4)),
+        ('Cophenetic Correlation (Average)',               '',     round(coph.get('average', float('nan')), 4)),
+        ('Adjusted Rand Index (K-Means vs Hierarchical)',  '',     round(ari, 4)),
+        ('DBSCAN clusters (eps auto)',                     best_eps, n_clusters_db),
+        ('DBSCAN noise points',                            best_eps, n_noise),
+    ]
+    out = os.path.join(OUTPUT_DIR, 'validation_metrics.csv')
+    pd.DataFrame(rows, columns=['Metric', 'Param', 'Value']).to_csv(out, index=False)
+    print(f"\n✅ Metrik validasi Phase 2 tersimpan → {out}")
 
 
 # ════════════════════════════════════════════════════════════
@@ -800,13 +857,15 @@ def run_clustering(path=None):
     _, names = profile_clusters(df, feats, 'KMeans_Cluster')
 
     print("\n[8/9] DBSCAN + Hierarchical + profil...")
-    df, n_clusters_db, n_noise, _ = run_dbscan(df, X_scaled, feats)
-    df, sil_hier = run_hierarchical(df, X_scaled, best_k)
+    df, n_clusters_db, n_noise, best_eps = run_dbscan(df, X_scaled, feats)
+    df, sil_hier, coph = run_hierarchical(df, X_scaled, best_k)
     profile_clusters(df, feats, 'Hierarchical_Cluster')
 
     print("\n[9/9] Perbandingan & simpan...")
-    compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise)
+    _, ari = compare_methods(df, X_scaled, sil_km, sil_hier, n_clusters_db, n_noise)
     save_clustered(df, names)
+    save_validation_metrics(sil_km, sil_hier, coph, ari, best_k,
+                            n_clusters_db, n_noise, best_eps)
 
     print("\n" + "=" * 55)
     print("  PHASE 2 SELESAI")
