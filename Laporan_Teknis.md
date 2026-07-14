@@ -1,92 +1,97 @@
-# Laporan Teknis — Implementasi Pipeline KDD
+# Laporan Teknis, Implementasi Pipeline KDD
 
 **Kelompok 6 · Banking Transaction Dataset · Data Mining**
 
 Dokumen ini adalah pendamping teknis dari [`Laporan_Knowledge_Discovery.md`](Laporan_Knowledge_Discovery.md).
 Laporan Knowledge Discovery menjelaskan **apa** yang ditemukan dalam bahasa
-bisnis; laporan ini menjelaskan **bagaimana** temuan itu dihasilkan: arsitektur
-kode, fungsi-fungsi kunci, parameter beserta alasannya, dan matematika di balik
-metode yang dipakai — termasuk varian *modified* pada Phase 4 (revisi dosen).
+bisnis. Laporan teknis ini menjelaskan **bagaimana** temuan itu dihasilkan. Kami
+membahas arsitektur kode, fungsi-fungsi yang paling berdampak di tiap fase,
+parameter beserta alasannya, dan matematika di balik metode yang dipakai,
+termasuk varian *modified* pada Phase 4 yang merupakan revisi dari masukan dosen.
 
----
+Fungsi-fungsi pembantu kecil (loader, plotter murni, formatter string) tidak
+dibahas satu per satu. Fokus laporan ini adalah fungsi yang menentukan hasil dan
+keputusan metodologis.
 
 ## 1. Arsitektur Pipeline
 
 ### 1.1 Alur data
 
-Pipeline dibangun sebagai lima modul Python yang berkomunikasi lewat **file CSV
-antar-fase** — tiap fase bisa dijalankan, diperiksa, dan diulang secara terpisah:
+Pipeline dibangun sebagai lima modul Python yang berkomunikasi lewat file CSV
+antar-fase. Dengan cara ini tiap fase bisa dijalankan, diperiksa, dan diulang
+secara terpisah tanpa harus mengulang fase sebelumnya.
 
 ```
-Comprehensive_Banking_Database.csv  (5.000 baris, data mentah)
+Comprehensive_Banking_Database.csv   (5.000 baris, data mentah)
         │
-        ▼  src/preprocess.py ─── Phase 1
-        ├──► data/dataset_clustering.csv   (3 rasio perilaku + konteks, NILAI ASLI)
-        └──► data/dataset_arm.csv          (14 kolom kategorikal hasil binning)
+        ▼  src/preprocess.py   (Phase 1)
+        ├─► data/dataset_clustering.csv   (3 rasio perilaku + konteks, nilai asli)
+        └─► data/dataset_arm.csv          (14 kolom kategorikal hasil binning)
                 │                                  │
-                ▼  src/clustering.py ── Phase 2    ▼  src/arm.py ── Phase 3
+                ▼  src/clustering.py (Phase 2)     ▼  src/arm.py (Phase 3)
         data/dataset_clustered.csv          outputs/phase3/rules_all.csv (82 rule)
         (+ label KMeans/DBSCAN/Hierarchical)       + top_rules.csv (top 20)
                 │
-                ▼  src/anomaly.py ─── Phase 4
-        data/dataset_final.csv  (label cluster + flag & klasifikasi anomali)
+                ▼  src/anomaly.py   (Phase 4)
+        data/dataset_final.csv   (label cluster + flag & klasifikasi anomali)
                 │
-                ▼  src/dashboard.py ── Phase 5 (Plotly Dash, port 8050)
+                ▼  src/dashboard.py (Phase 5, Plotly Dash, port 8050)
 ```
 
-### 1.2 Entry point & konfigurasi
+### 1.2 Entry point dan konfigurasi
 
-- **`main.py`** — satu entry point untuk semua fase:
-  `python main.py --phase {1|2|3|4|5|all}`. Import tiap modul dilakukan
-  *lazy* (di dalam blok `if`) supaya menjalankan satu fase tidak menarik
-  dependency fase lain. Mode `all` menjalankan Phase 1–4 berurutan; dashboard
-  sengaja tidak ikut karena server-nya *blocking*.
-- **`config.py`** — konstanta terpusat (path, daftar kolom, parameter
-  clustering & anomaly). Modul `src/*.py` juga mendefinisikan salinan lokal
-  konstanta yang dipakainya supaya tetap bisa dijalankan *standalone*
-  (`python src/anomaly.py`) tanpa mengubah `sys.path`.
+`main.py` adalah satu-satunya entry point untuk semua fase lewat perintah
+`python main.py --phase {1|2|3|4|5|all}`. Import tiap modul dilakukan secara
+*lazy* di dalam blok `if`, sehingga menjalankan satu fase tidak ikut menarik
+dependency fase lain. Mode `all` menjalankan Phase 1 sampai 4 secara berurutan.
+Dashboard sengaja tidak ikut dijalankan pada mode `all` karena server-nya
+bersifat *blocking*.
+
+`config.py` menampung konstanta terpusat berupa path, daftar kolom, serta
+parameter clustering dan anomaly. Setiap modul di `src/` juga mendefinisikan
+salinan lokal konstanta yang dipakainya, supaya modul itu tetap bisa dijalankan
+secara *standalone* misalnya `python src/anomaly.py` tanpa perlu mengubah
+`sys.path`.
 
 ### 1.3 Konvensi yang berlaku di semua modul
 
 | Konvensi | Implementasi | Alasan |
 |---|---|---|
-| Plot non-interaktif | `matplotlib.use('Agg')` sebelum `pyplot` di-import | pipeline tidak nge-*freeze* menunggu jendela plot; semua grafik tersimpan ke `outputs/phaseN/` |
-| Konsol Windows | `sys.stdout.reconfigure(encoding='utf-8')` | log memakai karakter unicode (→, ✅); default cp1252 akan crash |
-| Determinisme | `RANDOM_STATE = 42` untuk K-Means, t-SNE, PCA, Isolation Forest, sampling dendrogram | hasil bisa direproduksi identik antar-run |
-| Path portabel | `BASE_DIR = dirname(dirname(abspath(__file__)))` | jalan dari folder mana pun, tidak bergantung *working directory* |
-| Dokumentasi | tiap fungsi ber-docstring (tujuan, keputusan teknis, nilai kembalian) + blok komentar berisi justifikasi metodologis | kode = dokumentasi keputusan preprocessing (tuntutan rubrik) |
+| Plot non-interaktif | `matplotlib.use('Agg')` sebelum `pyplot` di-import | pipeline tidak nge-*freeze* menunggu jendela plot, semua grafik tersimpan ke `outputs/phaseN/` |
+| Konsol Windows | `sys.stdout.reconfigure(encoding='utf-8')` | log memakai karakter unicode seperti panah dan centang, sedangkan default cp1252 akan crash |
+| Determinisme | `RANDOM_STATE = 42` untuk K-Means, t-SNE, PCA, Isolation Forest, dan sampling dendrogram | hasil bisa direproduksi identik antar-run |
+| Path portabel | `BASE_DIR` diturunkan dari lokasi file lewat `abspath(__file__)` | pipeline jalan dari folder mana pun, tidak bergantung *working directory* |
+| Dokumentasi | tiap fungsi ber-docstring berisi tujuan, keputusan teknis, dan nilai kembalian | kode sekaligus menjadi dokumentasi keputusan preprocessing sesuai tuntutan rubrik |
 
----
+## 2. Phase 1, Preprocessing (`src/preprocess.py`)
 
-## 2. Phase 1 — `src/preprocess.py` (Data Understanding & Preprocessing)
-
-### 2.1 Peta fungsi
+### 2.1 Fungsi yang berdampak
 
 | Fungsi | Tugas | Keputusan teknis penting |
 |---|---|---|
-| `load_data` | baca CSV mentah | — |
-| `run_eda` | histogram, boxplot, countplot, scatter, null/duplikat, korelasi | menghitung berapa pasang fitur dengan \|r\|>0,1 → **temuan struktur data** (lihat 2.2) |
-| `validate_data` | validasi logika domain | inkonsistensi saldo di-*cross-check* dengan label `Anomaly` → tidak berkorelasi → baris **tidak dihapus** |
-| `engineer_features` | fitur temporal + **3 rasio perilaku** | pembagian nol → `inf` → `NaN` → diisi median |
-| `drop_irrelevant_columns` | buang PII, surrogate key, tanggal mentah | privasi + kolom tanpa makna semantik |
-| `bin_features` | kontinu → kategorikal | **ambang domain tetap**, bukan kuantil (lihat 2.3) |
-| `detect_outliers_prescaling` | outlier IQR per fitur *sebelum* scaling | outlier tidak dibuang; hasilnya memilih scaler per fitur |
-| `encode_features` | Label Encoding (biner) + One-Hot (nominal) | encoder terpisah per kolom agar mapping tidak saling timpa |
-| `normalize_features` | scaling per fitur | `RobustScaler` bila outlier >5% atau \|skew\|>1, selain itu `MinMaxScaler` |
-| `feature_selection` | korelasi + Mutual Information | dua metode sesuai rubrik (korelasi & entropi) |
-| `save_datasets` | ekspor 2 dataset turunan | dataset clustering diekspor **nilai asli** (lihat 2.4) |
+| `run_eda` | histogram, boxplot, countplot, scatter, cek null dan duplikat, korelasi | menghitung berapa pasang fitur dengan \|r\|>0,1, yang menjadi temuan struktur data di bagian 2.2 |
+| `validate_data` | validasi logika domain | inkonsistensi saldo di-*cross-check* dengan label `Anomaly`, ternyata tidak berkorelasi, sehingga baris tidak dihapus |
+| `engineer_features` | fitur temporal dan **3 rasio perilaku** | pembagian nol diarahkan ke `NaN` lalu diisi median |
+| `drop_irrelevant_columns` | buang PII, surrogate key, dan tanggal mentah | menjaga privasi sekaligus membuang kolom tanpa makna semantik sebelum encoding |
+| `bin_features` | kontinu menjadi kategorikal | memakai ambang domain tetap, bukan kuantil, lihat 2.3 |
+| `detect_outliers_prescaling` | deteksi outlier IQR per fitur sebelum scaling | outlier tidak dibuang, hasilnya dipakai untuk memilih scaler tiap fitur |
+| `encode_features` | Label Encoding untuk kolom biner dan One-Hot untuk nominal | encoder terpisah per kolom supaya mapping antar kolom tidak saling menimpa |
+| `normalize_features` | scaling per fitur | `RobustScaler` bila outlier di atas 5% atau \|skew\|>1, selain itu `MinMaxScaler` |
+| `feature_selection` | korelasi dan Mutual Information | dua metode seleksi sesuai rubrik yaitu korelasi dan entropi |
+| `save_datasets` | ekspor 2 dataset turunan | dataset clustering diekspor dalam nilai asli, lihat 2.4 |
 
 ### 2.2 Temuan struktur data yang menentukan desain
 
-`run_eda` menghitung korelasi seluruh pasangan fitur numerik: hanya **2 dari 55
-pasang** dengan |r| > 0,1, keduanya pasangan turunan (`Account Balance` ↔
-`Balance After Transaction` 0,70; `Credit Card Balance` ↔ `Minimum Payment Due`
-≈ 1,00). Skewness fitur mentah ≈ 0 (near-uniform). Konsekuensi yang di-encode
-langsung di kode fase berikutnya: **PCA tidak akan efektif** dan **clustering
-fitur mentah tidak akan menemukan cluster alami**.
+`run_eda` menghitung korelasi seluruh pasangan fitur numerik. Hanya 2 dari 55
+pasang yang punya |r| di atas 0,1, dan keduanya memang pasangan turunan yaitu
+`Account Balance` dengan `Balance After Transaction` sebesar 0,70, serta
+`Credit Card Balance` dengan `Minimum Payment Due` yang mendekati 1,00. Skewness
+fitur mentah mendekati nol atau near-uniform. Dua konsekuensi langsung di-encode
+di kode fase berikutnya. Pertama, PCA tidak akan efektif. Kedua, clustering pada
+fitur mentah tidak akan menemukan cluster alami.
 
-Karena itu `engineer_features` membuat tiga rasio perilaku — inilah baris kode
-paling berpengaruh di seluruh proyek:
+Karena itu `engineer_features` membuat tiga rasio perilaku. Ini adalah baris kode
+paling berpengaruh di seluruh proyek.
 
 ```python
 data_set['CC_Utilization']               = data_set['Credit Card Balance'] / data_set['Credit Limit']
@@ -94,55 +99,62 @@ data_set['Transaction_to_Balance_Ratio'] = data_set['Transaction Amount']  / dat
 data_set['Loan_to_Balance_Ratio']        = data_set['Loan Amount']         / data_set['Account Balance'].replace(0, np.nan)
 ```
 
-Rasio dua variabel uniform menghasilkan distribusi **berstruktur** (skew 2–7,
-ekor kanan panjang) — struktur inilah yang membuat segmentasi Phase 2 bermakna
-(silhouette naik dari ≈0,07 ke ≈0,57).
+Rasio dari dua variabel uniform menghasilkan distribusi yang berstruktur dengan
+skew 2 sampai 7 dan ekor kanan panjang. Struktur inilah yang membuat segmentasi
+Phase 2 menjadi bermakna, dengan silhouette naik dari sekitar 0,07 menjadi
+sekitar 0,57.
 
 ### 2.3 Binning berbasis ambang domain
 
-`bin_features` sengaja **tidak** memakai kuantil/equal-width karena batasnya
-bergeser bila data berubah dan kategorinya tidak punya makna intrinsik. Ambang
-tetap yang dipakai dirujuk ke literatur/praktik industri (rincian referensi ada
-di blok komentar di atas fungsi): tahap hidup finansial untuk umur (Modigliani–
-Brumberg; Agarwal dkk. 2009), pedoman utilisasi FICO 30/70/100% (kategori
-`Over-Limit` > 100% wajib ada agar sinyal risiko tidak hilang), tier suku bunga
-Regulation Z, ambang minimum-balance ritel, bracket pinjaman konsumen, dan tier
-nominal transaksi ala pemantauan AML.
+`bin_features` sengaja tidak memakai kuantil atau equal-width. Alasannya batas
+kuantil bergeser setiap kali data berubah dan kategorinya tidak punya makna
+intrinsik. Ambang tetap yang dipakai dirujuk ke literatur dan praktik industri,
+dengan rincian referensi ada di blok komentar di atas fungsi. Contohnya tahap
+hidup finansial untuk kelompok umur mengikuti Modigliani dan Brumberg serta
+Agarwal dkk. 2009, pedoman utilisasi kartu kredit 30/70/100% mengikuti FICO
+dengan kategori `Over-Limit` di atas 100% yang wajib ada agar sinyal risiko tidak
+hilang, tier suku bunga mengikuti Regulation Z, lalu ambang minimum-balance
+ritel, bracket pinjaman konsumen, dan tier nominal transaksi ala pemantauan AML.
 
 ### 2.4 Kontrak antar-fase
 
-`save_datasets` mengekspor `dataset_clustering.csv` dalam **nilai asli** (belum
-di-scale). Winsorization + scaling menjadi tanggung jawab Phase 2, dengan dua
-alasan: (1) profiling cluster harus memakai nilai asli agar interpretasi bisnis
-valid; (2) pemisahan tanggung jawab — Phase 1 menghasilkan *fitur*, Phase 2
-mengelola *ruang jarak*.
+`save_datasets` mengekspor `dataset_clustering.csv` dalam nilai asli yang belum
+di-scale. Winsorization dan scaling menjadi tanggung jawab Phase 2. Ada dua
+alasan. Alasan pertama, profiling cluster harus memakai nilai asli supaya
+interpretasi bisnis tetap valid. Alasan kedua adalah pemisahan tanggung jawab,
+di mana Phase 1 bertugas menghasilkan fitur dan Phase 2 bertugas mengelola ruang
+jarak.
 
----
+## 3. Phase 2, Segmentation via Clustering (`src/clustering.py`)
 
-## 3. Phase 2 — `src/clustering.py` (Segmentation via Clustering)
-
-### 3.1 Pipeline 9 langkah (`run_clustering`)
+### 3.1 Pipeline sembilan langkah (`run_clustering`)
 
 ```
-[1] load → [2] attach_categoricals → [3] dimensionality_analysis (bukti PCA)
-→ [4] feature_selection_comparison (exhaustive 286 kombinasi)
-→ [5] prepare_features (winsorize 2% + StandardScaler)
-→ [6] find_optimal_k (Elbow + Silhouette) → [7] K-Means + profil
-→ [8] DBSCAN (auto-eps) + Hierarchical (3 linkage) + profil → [9] bandingkan & simpan
+[1] load
+[2] attach_categoricals
+[3] dimensionality_analysis   (bukti PCA tidak dipakai)
+[4] feature_selection_comparison   (exhaustive 286 kombinasi)
+[5] prepare_features   (winsorize 2% + StandardScaler)
+[6] find_optimal_k   (Elbow + Silhouette)
+[7] run_kmeans + profil
+[8] run_dbscan (auto-eps) + run_hierarchical (3 linkage) + profil
+[9] compare_methods + save_clustered
 ```
 
 ### 3.2 Bukti PCA tidak dipakai (`dimensionality_analysis`)
 
-PCA dijalankan **sekali, bukan untuk dipakai**, melainkan untuk membuktikan
-scree plot-nya datar: tiap komponen menangkap ≈1/n variance (garis merah "1/n"
-digambar sebagai pembanding di `pca_why_not_used.png`). Butuh 9 dari 11
-komponen untuk 80% variance → kompresi hanya 18% → reduksi tidak berguna.
-Keputusan drop-PCA dengan demikian **terdokumentasi dengan bukti**, bukan asumsi.
+PCA dijalankan satu kali bukan untuk dipakai, melainkan untuk membuktikan bahwa
+scree plot-nya datar. Tiap komponen hanya menangkap sekitar 1/n variance, dan
+garis merah pembanding 1/n digambar di `pca_why_not_used.png`. Dibutuhkan 9 dari
+11 komponen untuk mencapai 80% variance, jadi kompresi hanya 18% dan reduksi
+tidak berguna. Dengan begitu keputusan tidak memakai PCA punya bukti, bukan
+sekadar asumsi.
 
 ### 3.3 Validasi pemilihan fitur (`feature_selection_comparison`)
 
-Untuk menjawab "kenapa 3 rasio itu, bukan fitur lain?", pilihan manual diadu
-dengan pencarian otomatis. Inti implementasinya:
+Untuk menjawab pertanyaan kenapa 3 rasio itu yang dipilih dan bukan fitur lain,
+pilihan manual diadu dengan pencarian otomatis menyeluruh. Inti implementasinya
+seperti berikut.
 
 ```python
 combos = list(combinations(pool, 3))            # C(13,3) = 286 kombinasi
@@ -150,61 +162,70 @@ scored = [(_kmeans_silhouette(_winsor_scale(df, list(c))), c) for c in combos]
 scored.sort(key=lambda t: t[0], reverse=True)   # peringkat semua kombinasi
 ```
 
-Tiap kombinasi melewati transformasi yang **sama** dengan pipeline utama
-(winsorize + scale), di-cluster K-Means K=3, lalu dihitung silhouette **penuh
-pada 5.000 baris** (tanpa sampling) supaya peringkatnya setara dengan angka
-final yang dilaporkan. Ini bagian terlama Phase 2 (~5 menit): silhouette
-O(n²) × 286 kombinasi. Hasil: pencarian otomatis mendarat **tepat di 3 rasio
-domain (peringkat #1 dari 286)** — silhouette 0,571 vs 0,065 (semua fitur
-mentah) dan 0,081 (PCA 80%).
+Tiap kombinasi melewati transformasi yang sama dengan pipeline utama yaitu
+winsorize lalu scale, di-cluster K-Means dengan K=3, kemudian dihitung silhouette
+penuh pada 5.000 baris tanpa sampling supaya peringkatnya setara dengan angka
+final yang dilaporkan. Bagian ini adalah bagian terlama Phase 2 sekitar 5 menit,
+karena silhouette berbiaya O(n²) dikali 286 kombinasi. Hasilnya, pencarian
+otomatis mendarat tepat di 3 rasio domain sebagai peringkat 1 dari 286.
+Silhouette-nya 0,571, jauh di atas 0,065 pada seluruh fitur mentah dan 0,081 pada
+PCA 80%.
 
 ### 3.4 Penentuan K dan algoritma
 
-- **`find_optimal_k`**: WCSS (elbow) + silhouette untuk K=2..10. Silhouette
-  murni tertinggi ada di K=2, tetapi K=2 hanya memisahkan "over-limit vs
-  sisanya". **K=3 dipilih atas dasar domain**: silhouette tetap tinggi dan
-  memunculkan segmen ketiga (*liquidity-stressed*) yang actionable — keputusan
-  ini dicetak eksplisit di log dan digambar di `elbow_silhouette.png`.
-- **`run_kmeans`**: K-Means `n_init=10`, lalu dua visual — scatter pasangan
-  rasio dan proyeksi **t-SNE** 2D (langkah tunggal terlama kedua, ~30–60 dtk).
-- **`run_dbscan`**: eps **dicari otomatis** — kandidat 0,20–2,00 (step 0,05)
-  masing-masing dijalankan, lalu dipilih yang persentase noise-nya paling dekat
-  ~5% di dalam rentang wajar 2–15%. Noise (-1) ≈ 274 titik (5,5%) menjadi
-  sudut pandang *density* untuk Phase 4.
-- **`run_hierarchical`**: dendrogram 3 linkage (ward/complete/average) pada
-  **sampel 1.000 baris** (dendrogram 5.000 daun tidak terbaca dan berat);
-  label final dipotong dari Ward pada seluruh data.
-- **`name_segments`**: penamaan segmen **data-driven** — membandingkan median
-  rasio tiap cluster terhadap median global (label cluster K-Means itu acak,
-  jadi nama tidak boleh di-hardcode ke nomor cluster).
+`find_optimal_k` menghitung WCSS untuk elbow dan silhouette untuk K dari 2 sampai
+10. Silhouette murni tertinggi ada di K=2, tetapi K=2 hanya memisahkan kelompok
+over-limit dari sisanya. Kami memilih K=3 atas dasar domain, karena silhouette
+tetap tinggi dan memunculkan segmen ketiga yaitu *liquidity-stressed* yang
+actionable. Keputusan ini dicetak eksplisit di log dan digambar di
+`elbow_silhouette.png`.
+
+`run_kmeans` menjalankan K-Means dengan `n_init=10`, lalu menghasilkan dua visual
+yaitu scatter pasangan rasio dan proyeksi t-SNE 2D. Proyeksi t-SNE adalah langkah
+tunggal terlama kedua sekitar 30 sampai 60 detik.
+
+`run_dbscan` mencari eps secara otomatis. Kandidat eps dari 0,20 sampai 2,00
+dengan langkah 0,05 masing-masing dijalankan, lalu dipilih yang persentase
+noise-nya paling dekat ke sekitar 5% di dalam rentang wajar 2 sampai 15%. Titik
+noise berlabel -1 ada sekitar 274 titik atau 5,5%, dan ini menjadi sudut pandang
+*density* untuk Phase 4.
+
+`run_hierarchical` menggambar dendrogram untuk tiga linkage yaitu ward, complete,
+dan average pada sampel 1.000 baris, karena dendrogram dengan 5.000 daun tidak
+terbaca dan berat. Label final tetap dipotong dari Ward pada seluruh data.
+
+`name_segments` memberi nama segmen secara data-driven dengan membandingkan
+median rasio tiap cluster terhadap median global. Label cluster K-Means bersifat
+acak, jadi nama segmen tidak boleh di-hardcode ke nomor cluster.
 
 ### 3.5 Profil segmen dua lapis
 
-`profile_clusters` menampilkan median **nilai asli** (bukan z-score) untuk 3
-rasio + konteks finansial. `profile_categoricals` menambah lapis demografis:
-crosstab persentase per segmen dengan metrik **spread** (selisih proporsi
-maks–min antar cluster, dalam poin persen; ≥10 pp = membedakan). Temuan yang
-dilaporkan jujur: demografi nyaris seragam (2–7 pp) → segmen dibentuk
-**perilaku finansial**, bukan demografi.
+`profile_clusters` menampilkan median nilai asli dan bukan z-score untuk 3 rasio
+serta konteks finansial. `profile_categoricals` menambah lapis demografis berupa
+crosstab persentase per segmen, dengan metrik *spread* yaitu selisih proporsi
+maksimum dan minimum antar cluster dalam poin persen, di mana selisih 10 poin
+persen atau lebih dianggap membedakan. Temuan yang dilaporkan bersifat jujur.
+Demografi nyaris seragam di kisaran 2 sampai 7 poin persen, jadi segmen dibentuk
+oleh perilaku finansial dan bukan oleh demografi.
 
----
+## 4. Phase 3, Association Rule Mining (`src/arm.py`)
 
-## 4. Phase 3 — `src/arm.py` (Association Rule Mining)
+### 4.1 Transformasi ke format transaksi (`encode_for_apriori`)
 
-### 4.1 Transformasi ke format transaksi
+Setiap baris diubah menjadi *itemset* dengan format `NamaKolom=Nilai`, misalnya
+`Loan Status=Approved`, lalu di-one-hot dengan `TransactionEncoder` dari mlxtend
+menjadi matriks boolean berukuran 5.000 kali 44 item. Prefiks nama kolom mencegah
+ambiguitas, karena nilai "High" milik `Rate_Category` berbeda arti dari "High"
+milik `CC_Utilization_Category`.
 
-Setiap baris diubah menjadi *itemset* dengan format **`NamaKolom=Nilai`**
-(mis. `Loan Status=Approved`) lalu di-one-hot dengan `TransactionEncoder`
-mlxtend → matriks boolean 5.000 × 44 item. Prefiks nama kolom mencegah
-ambiguitas ("High" milik `Rate_Category` ≠ "High" milik `CC_Utilization_Category`).
+### 4.2 Apriori dan auto-tune support (`auto_tune_support`)
 
-### 4.2 Apriori + auto-tune support
-
-Parameter kualitas ditetapkan dulu dan **tidak dilonggarkan**: `min_lift = 1,4`
-(non-trivial, ≥40% di atas acak) dan `min_confidence = 0,5`. Karena binning
-memakai ambang domain (bukan kuantil), sebagian kategori kecil dan itemset
-lebih jarang — maka `auto_tune_support` menurunkan `min_support` bertahap
-(0,05 → step 0,0025) sampai dapat ≥10 rule:
+Parameter kualitas ditetapkan lebih dulu dan tidak dilonggarkan, yaitu
+`min_lift` sebesar 1,4 yang berarti minimal 40% di atas acak, dan
+`min_confidence` sebesar 0,5. Karena binning memakai ambang domain dan bukan
+kuantil, sebagian kategori berukuran kecil sehingga itemset menjadi lebih jarang.
+Untuk mengatasinya `auto_tune_support` menurunkan `min_support` secara bertahap
+mulai dari 0,05 dengan langkah 0,0025 sampai memperoleh minimal 10 rule.
 
 ```python
 for sup in np.arange(start_support, 0.004, -0.0025).round(4):
@@ -215,162 +236,189 @@ for sup in np.arange(start_support, 0.004, -0.0025).round(4):
         return frequent_itemsets, rules, sup
 ```
 
-Konvergen di `min_support = 0,01` (rule muncul ≥50 dari 5.000 baris) →
-**82 rule** (lift 1,401–1,662; confidence 0,50–0,76). Lift yang mentok di
-~1,66 adalah **batas data** (atribut kategorikal nyaris independen), bukan bug
-— dijelaskan di laporan bisnis.
+Di dalam loop ini `find_frequent_itemsets` memanggil Apriori untuk mencari
+itemset yang sering muncul pada support tertentu, lalu `generate_rules`
+menurunkan aturan dari itemset itu sambil menghitung support, confidence, dan
+lift, dan hanya menyimpan aturan yang lolos ambang lift serta confidence.
 
-### 4.3 Ekspor dua tingkat & lapisan makna bisnis
+Proses konvergen di `min_support` sebesar 0,01, yang berarti rule muncul minimal
+50 kali dari 5.000 baris, dan menghasilkan 82 rule dengan lift 1,401 sampai 1,662
+serta confidence 0,50 sampai 0,76. Lift yang mentok di sekitar 1,66 adalah batas
+data karena atribut kategorikal nyaris independen, jadi ini bukan bug dan sudah
+dijelaskan di laporan bisnis.
 
-`export_rules` menyimpan **`rules_all.csv` (semua 82 rule — sumber angka
-"total rule" di laporan & KPI dashboard)** dan `top_rules.csv` (top-20 by lift
-untuk tabel ringkas). Dua file ini yang menjaga angka konsisten di seluruh
-deliverable. `ITEM_MEANING_MAP` + `pretty_item/pretty_itemset/infer_business_theme`
-menerjemahkan item ke frasa bisnis Indonesia dan mengelompokkan rule per tema
-(risiko / layanan / nasabah sehat) untuk interpretasi otomatis top-10.
+### 4.3 Ekspor dua tingkat dan lapisan makna bisnis (`export_rules`)
 
----
+`export_rules` menyimpan `rules_all.csv` yang memuat semua 82 rule dan menjadi
+sumber angka total rule di laporan maupun KPI dashboard, ditambah `top_rules.csv`
+yang memuat top-20 berdasarkan lift untuk tabel ringkas. Dua file inilah yang
+menjaga angka tetap konsisten di seluruh deliverable. Selain itu ada
+`ITEM_MEANING_MAP` bersama fungsi pembantu `pretty_itemset` dan
+`infer_business_theme` yang menerjemahkan item ke frasa bisnis Indonesia dan
+mengelompokkan rule per tema yaitu risiko, layanan, atau nasabah sehat, untuk
+interpretasi otomatis top-10. Fungsi `print_business_interpretation` memakai
+pengelompokan tema ini untuk mencetak ringkasan bisnis, sedangkan
+`visualize_rules` menghasilkan grafik pendukung berupa distribusi support,
+scatter support dengan confidence, dan bar top rule di `outputs/phase3/`.
 
-## 5. Phase 4 — `src/anomaly.py` (Anomaly Detection, metode *modified*)
+## 5. Phase 4, Anomaly Detection metode *modified* (`src/anomaly.py`)
 
-Fase ini direvisi sesuai masukan dosen: ketiga metode memakai varian
-**modified/robust**, dan versi standar tetap dihitung sebagai **pembanding
-sistematis** (`compare_standard_vs_modified` → `standard_vs_modified.csv/png`).
-Motivasi bersama: ketiga rasio perilaku *right-skewed* berat (skew 2–7),
-sedangkan metode standar diam-diam mengasumsikan distribusi simetris.
+Fase ini direvisi sesuai masukan dosen. Ketiga metode memakai varian modified
+atau robust, sedangkan versi standar tetap dihitung sebagai pembanding sistematis
+lewat `compare_standard_vs_modified` yang menghasilkan `standard_vs_modified.csv`
+dan `.png`. Motivasi bersamanya sama. Ketiga rasio perilaku bersifat right-skewed
+berat dengan skew 2 sampai 7, sedangkan metode standar diam-diam mengasumsikan
+distribusi simetris.
 
-### 5.1 IQR modified — *skew-adjusted boxplot* via medcouple
+### 5.1 IQR modified, adjusted boxplot lewat medcouple (`_medcouple`, `adjusted_iqr_bounds`, `detect_iqr`)
 
-**Medcouple** (Brys–Hubert–Struyf, 2004) adalah statistik kemiringan robust:
-median dari kernel semua pasangan (xᵢ ≥ median, xⱼ ≤ median):
+Medcouple mengikuti Brys, Hubert, dan Struyf 2004, dan merupakan statistik
+kemiringan yang robust. Nilainya adalah median dari kernel semua pasangan xᵢ yang
+berada di atas atau sama dengan median dan xⱼ yang berada di bawah atau sama
+dengan median.
 
 ```
-h(xᵢ, xⱼ) = ((xᵢ − med) − (med − xⱼ)) / (xᵢ − xⱼ)      MC = median h  ∈ [−1, 1]
+h(xᵢ, xⱼ) = ((xᵢ − med) − (med − xⱼ)) / (xᵢ − xⱼ)
+MC = median dari h, dengan nilai di rentang −1 sampai 1
 ```
 
-Implementasi di `_medcouple()` divektorisasi numpy O(n²) — untuk 5.000 baris
-(~6 juta pasangan) selesai < 1 detik:
+Implementasi di `_medcouple` divektorisasi dengan numpy dan berbiaya O(n²). Untuk
+5.000 baris yang berarti sekitar 6 juta pasangan, prosesnya selesai di bawah 1
+detik.
 
 ```python
-xp = x[x >= med]; xm = x[x <= med]
-a = xp[:, None] - med          # jarak sisi kanan ke median
-b = med - xm[None, :]          # jarak median ke sisi kiri
+xp = x[x >= med]           # sisi kanan (termasuk median)
+xm = x[x <= med]           # sisi kiri  (termasuk median)
+a = xp[:, None] - med      # jarak xi ke median
+b = med - xm[None, :]      # jarak median ke xj
 h = (a - b) / (xp[:, None] - xm[None, :])
-return float(np.nanmedian(h))  # pasangan 0/0 (tie di median) diabaikan
+return float(np.nanmedian(h))   # pasangan tie di median diabaikan
 ```
 
-Pagar *adjusted boxplot* (Hubert & Vandervieren, 2008) mengoreksi pagar klasik
-dengan faktor eksponensial dari MC:
+Pagar *adjusted boxplot* mengikuti Hubert dan Vandervieren 2008, yang mengoreksi
+pagar klasik dengan faktor eksponensial dari MC.
 
 ```
-MC ≥ 0 :  [Q1 − 1,5·e^(−4·MC)·IQR ,  Q3 + 1,5·e^(+3·MC)·IQR]
-MC < 0 :  [Q1 − 1,5·e^(−3·MC)·IQR ,  Q3 + 1,5·e^(+4·MC)·IQR]
+MC ≥ 0   [Q1 − 1,5·e^(−4·MC)·IQR ,  Q3 + 1,5·e^(+3·MC)·IQR]
+MC < 0   [Q1 − 1,5·e^(−3·MC)·IQR ,  Q3 + 1,5·e^(+4·MC)·IQR]
 ```
 
-Bila MC = 0 rumus kembali persis ke pagar klasik. Pada data kami MC = +0,285 /
-+0,390 / +0,448 (right-skew) → pagar atas melebar (mis. `CC_Utilization`:
-1,56 → 2,64), sehingga ekor kanan yang wajar berhenti salah-flag:
-**1.131 → 880 record** (22,6% → 17,6%).
+Bila MC sama dengan nol, rumus kembali persis ke pagar klasik. Pada data kami MC
+bernilai +0,285, +0,390, dan +0,448 yang menandakan right-skew, sehingga pagar
+atas melebar. Contohnya untuk `CC_Utilization` pagar atas bergerak dari 1,56
+menjadi 2,64, sehingga ekor kanan yang wajar berhenti salah di-flag. Jumlah
+tandanya turun dari 1.131 menjadi 880 record, atau dari 22,6% menjadi 17,6%.
 
-### 5.2 Z-score modified — median/MAD (Iglewicz & Hoaglin, 1993)
+### 5.2 Z-score modified, median dan MAD (`detect_zscore`)
 
-Z-score klasik `z = (x−mean)/std` memakai dua momen yang justru terdistorsi
-oleh outlier yang sedang dicari (mean tertarik, std membengkak). Versi modified
-menggantinya dengan median dan **MAD** (median absolute deviation):
+Z-score klasik `z = (x−mean)/std` memakai dua momen yang justru terdistorsi oleh
+outlier yang sedang dicari, karena mean tertarik ke arah outlier dan std
+membengkak. Versi modified mengikuti Iglewicz dan Hoaglin 1993, yang mengganti
+keduanya dengan median dan MAD atau median absolute deviation.
 
 ```
 M = 0,6745 · (x − median) / MAD          flag bila |M| > 3,5
 ```
 
-(0,6745 menyetarakan MAD dengan std pada distribusi normal; fallback
-`M = (x−med)/(1,253314·MeanAD)` bila MAD = 0.) Efeknya **berlawanan arah**
-dengan IQR: karena std klasik membengkak oleh ekor, z klasik hanya menangkap
-264 record; modified z menangkap **1.070** — penyimpangan nyata yang
-sebelumnya lolos.
+Konstanta 0,6745 menyetarakan MAD dengan std pada distribusi normal. Bila MAD
+bernilai nol, ada fallback `M = (x−med)/(1,253314·MeanAD)`. Efeknya berlawanan
+arah dengan IQR. Karena std klasik membengkak oleh ekor, z klasik hanya menangkap
+264 record, sedangkan modified z menangkap 1.070 record yang merupakan
+penyimpangan nyata yang sebelumnya lolos.
 
-### 5.3 Isolation Forest — threshold dari *gap* skor, bukan contamination
+### 5.3 Isolation Forest, threshold dari gap skor (`detect_isolation_forest`)
 
-Model di-fit sekali (`n_estimators=200`); skor anomali = `−score_samples`
-(makin tinggi makin anomali). Alih-alih memakai asumsi `contamination=0.05`,
-threshold ditarik dari struktur data (`detect_isolation_forest`):
+Model di-fit satu kali dengan `n_estimators=200`, dan skor anomali dihitung
+sebagai `−score_samples` sehingga makin tinggi skornya makin anomali. Alih-alih
+memakai asumsi `contamination=0.05`, threshold ditarik dari struktur data.
 
 ```python
 s_sorted = np.sort(score.values)[::-1]                    # skor menurun
-lo_i, hi_i = int(0.005*n), int(0.15*n)                    # jendela 0,5%–15%
+lo_i = max(1, int(GAP_MIN_FRAC * n))                      # batas bawah jendela
+hi_i = max(lo_i + 1, int(GAP_MAX_FRAC * n))               # batas atas jendela
 gaps = s_sorted[lo_i-1:hi_i-1] - s_sorted[lo_i:hi_i]      # gap antar skor berurutan
-cut_idx = lo_i + int(np.argmax(gaps))                     # posisi gap TERBESAR
+cut_idx = lo_i + int(np.argmax(gaps))                     # posisi gap terbesar
 thr_gap = (s_sorted[cut_idx-1] + s_sorted[cut_idx]) / 2   # titik tengah gap
 ```
 
-Jendela 0,5%–15% mencegah *cut* degeneratif (di 1–2 titik terekstrem, atau di
-tengah bulk populasi normal). Hasil pada data kami: gap terbesar 0,0125 di
-peringkat 25 — **66× lipat** median gap di jendela — jadi pemisah alami yang
-sangat tegas. Threshold 0,754 → **25 anomali** (contamination efektif 0,50%,
-vs 250 pada asumsi 5%). Ke-25 record ini persis himpunan yang disepakati
-**ketiga** metode. Visual pendukung: `isoforest_gap.png` (kurva skor + posisi
-cut gap vs cut 5%).
+Jendela pencarian 0,5% sampai 15% mencegah *cut* yang degeneratif, baik pada 1
+atau 2 titik terekstrem maupun di tengah bulk populasi normal. Pada data kami gap
+terbesar bernilai 0,0125 di peringkat 25, atau sekitar 66 kali median gap di
+jendela, jadi ini pemisah alami yang sangat tegas. Threshold 0,754 menghasilkan
+25 anomali, yang berarti contamination efektif 0,50% dibandingkan 250 record pada
+asumsi 5%. Ke-25 record ini persis himpunan yang disepakati ketiga metode. Visual
+pendukungnya ada di `isoforest_gap.png` berupa kurva skor dan posisi cut gap
+dibandingkan cut 5%.
 
-### 5.4 Konsensus, klasifikasi, dan validasi
+### 5.4 Konsensus, klasifikasi, validasi, dan ekspor (`compare_methods`, `classify_anomalies`, `cross_reference`, `validate_against_label`, `export_report`)
 
-- Flag resmi downstream = versi modified (kolom `flag_iqr`, `flag_zscore`,
-  `flag_if`); versi standar disimpan dengan akhiran `_std` untuk transparansi
-  (ikut diekspor di `anomaly_report.csv`).
-- `n_methods` (0–3) = jumlah metode yang menandai record; **konsensus = ≥2
-  metode → 446 record**; ketiganya sekaligus → 25.
-- `classify_anomalies` menerapkan aturan transparan berurutan:
-  **Risk Signal** (ekstrem pada dimensi berisiko: CC ≥ 2× limit, transaksi
-  ≥ 10× saldo, pinjaman ≥ 100× saldo, DAN dikuatkan ≥2 metode) →
-  **Data Error/Quality** (saldo akhir negatif / tidak konsisten) →
-  **Rare but Valid**. Hasil: 255 / 602 / 647 (+ 3.496 Normal).
-- Cross-reference Phase 2: 203 dari 446 konsensus juga DBSCAN-noise;
-  konsentrasi per segmen: Liquidity-Stressed 78,6%, Credit-Stressed 22,8%,
-  Mainstream 0,4%.
-- `validate_against_label`: label `Anomaly` bawaan **hanya** dipakai di sini
-  (bukan target). Kehadiran label -1 di anomali kami 5,6% ≈ base rate 6,0% —
-  keselarasan setara acak, konsisten dengan MI ≈ 0 di Phase 1.
+Flag resmi untuk downstream memakai versi modified pada kolom `flag_iqr`,
+`flag_zscore`, dan `flag_if`. Versi standar tetap disimpan dengan akhiran `_std`
+demi transparansi dan ikut diekspor oleh `export_report` ke `anomaly_report.csv`.
 
-### 5.5 Ringkasan standar vs modified
+`compare_methods` menghitung `n_methods` dari 0 sampai 3 sebagai jumlah metode
+yang menandai sebuah record. Konsensus didefinisikan sebagai minimal 2 metode,
+yang menghasilkan 446 record, sedangkan record yang ditandai ketiga metode
+sekaligus ada 25.
 
-| Metode | Standar | Modified | Arah & alasan |
-|---|---:|---:|---|
-| IQR | 1.131 (22,6%) | **880** (17,6%) | pagar mengikuti skew → ekor kanan wajar tak ter-flag |
-| Z-Score | 264 (5,3%) | **1.070** (21,4%) | MAD tidak membengkak oleh ekor → penyimpangan nyata tertangkap |
-| Isolation Forest | 250 (5,0%) | **25** (0,5%) | threshold dari gap alami skor, bukan asumsi 5% |
+`classify_anomalies` menerapkan aturan transparan secara berurutan. Kelas pertama
+adalah **Risk Signal**, yaitu record yang ekstrem pada dimensi berisiko seperti
+CC di atas 2 kali limit, transaksi di atas 10 kali saldo, atau pinjaman di atas
+100 kali saldo, dan sekaligus dikuatkan minimal 2 metode. Kelas kedua adalah
+**Data Error atau Quality**, yaitu saldo akhir yang negatif atau tidak konsisten.
+Kelas ketiga adalah **Rare but Valid**. Hasilnya berturut-turut 255, 602, dan
+647 record, ditambah 3.496 record Normal.
 
----
+Fungsi `cross_reference` menghubungkan hasil ke Phase 2 dan menunjukkan 203 dari
+446 konsensus juga merupakan DBSCAN-noise. Konsentrasinya per segmen adalah 78,6%
+pada Liquidity-Stressed, 22,8% pada Credit-Stressed, dan 0,4% pada Mainstream.
 
-## 6. Phase 5 — `src/dashboard.py` (Visualization & Knowledge Presentation)
+`validate_against_label` memakai label `Anomaly` bawaan dataset hanya di tahap
+ini dan bukan sebagai target. Kehadiran label -1 pada anomali kami sebesar 5,6%
+hampir sama dengan base rate 6,0%, jadi keselarasannya setara acak dan konsisten
+dengan Mutual Information yang mendekati nol di Phase 1.
+
+### 5.5 Ringkasan standar dibanding modified
+
+| Metode | Standar | Modified | Arah dan alasan |
+|---|---|---|---|
+| IQR | 1.131 (22,6%) | 880 (17,6%) | pagar mengikuti skew, jadi ekor kanan yang wajar tidak ter-flag |
+| Z-Score | 264 (5,3%) | 1.070 (21,4%) | MAD tidak membengkak oleh ekor, jadi penyimpangan nyata tertangkap |
+| Isolation Forest | 250 (5,0%) | 25 (0,5%) | threshold diambil dari gap alami skor, bukan asumsi 5% |
+
+## 6. Phase 5, Visualization dan Knowledge Presentation (`src/dashboard.py`)
 
 ### 6.1 Struktur
 
-- **`load_dashboard_data`** — dua sumber: `dataset_final.csv` (5.000 baris,
-  gabungan hasil Phase 1–4) dan `rules_all.csv` (semua 82 rule; fallback
-  `top_rules.csv`). KPI "Association Rules" dihitung dari file lengkap supaya
-  **konsisten dengan angka laporan**.
-- **`build_app`** — merakit layout + callback. Sengaja dipisah dari
-  `run_dashboard` (yang menyalakan server) supaya aplikasi bisa di-*smoke-test*
-  tanpa server: `from src.dashboard import build_app; build_app()`.
-- **Figure builder terpisah per grafik** (`fig_cluster_map`,
-  `fig_segment_demographics`, `fig_rule_network`, `fig_anomaly_scatter`, dst.)
-  — masing-masing fungsi murni `data → go.Figure`, mudah diuji.
+`load_dashboard_data` membaca dua sumber. Sumber pertama `dataset_final.csv`
+berisi 5.000 baris gabungan hasil Phase 1 sampai 4. Sumber kedua `rules_all.csv`
+berisi semua 82 rule, dengan fallback ke `top_rules.csv`. KPI Association Rules
+dihitung dari file lengkap supaya konsisten dengan angka laporan.
+
+`build_app` merakit layout dan callback. Fungsi ini sengaja dipisah dari
+`run_dashboard` yang menyalakan server, supaya aplikasi bisa di-*smoke-test*
+tanpa server lewat `from src.dashboard import build_app`.
+
+Setiap grafik punya figure builder terpisah seperti `fig_cluster_map`,
+`fig_segment_demographics`, `fig_rule_network`, dan `fig_anomaly_scatter`.
+Masing-masing adalah fungsi murni yang memetakan data menjadi objek figure,
+sehingga mudah diuji.
 
 ### 6.2 KPI dan interaktivitas
 
-Lima KPI dihitung langsung dari data saat startup (bukan hardcode): total
-nasabah, jumlah segmen, **82** rule, **446** anomali konsensus, **255** risk
-signal. Tiga tab interaktif:
+Lima KPI dihitung langsung dari data saat startup dan bukan di-hardcode, yaitu
+total nasabah, jumlah segmen, 82 rule, 446 anomali konsensus, dan 255 risk
+signal. Ada tiga tab interaktif.
 
 | Tab | Kontrol (Input) | Grafik (Output) |
 |---|---|---|
-| Segmentasi | metode clustering, sumbu X/Y, fitur demografis | cluster map (log-log), pie proporsi, profil rasio, komposisi demografis, validasi feature-selection (statis) |
-| Association Rules | slider minimum lift | network rules (networkx spring-layout, seed tetap), scatter support-confidence, tabel rules (sortable) |
-| Anomali | sumbu X/Y scatter | breakdown klasifikasi, anomali per segmen, scatter anomali |
+| Segmentasi | metode clustering, sumbu X dan Y, fitur demografis | cluster map log-log, pie proporsi, profil rasio, komposisi demografis, validasi feature-selection statis |
+| Association Rules | slider minimum lift | network rules dengan spring-layout seed tetap, scatter support dan confidence, tabel rules sortable |
+| Anomali | sumbu X dan Y scatter | breakdown klasifikasi, anomali per segmen, scatter anomali |
 
-Detail kecil yang penting: nilai maksimum slider lift di-*floor* ke 2 desimal
-(bukan *round*) — bila di-round ke atas, posisi slider tertinggi menyaring
-semua rule dan grafik menjadi kosong.
-
----
+Ada satu detail kecil yang penting. Nilai maksimum slider lift di-*floor* ke dua
+desimal dan bukan di-*round*. Bila di-round ke atas, posisi slider tertinggi akan
+menyaring semua rule sehingga grafik menjadi kosong.
 
 ## 7. Reproducibilitas
 
@@ -378,45 +426,49 @@ semua rule dan grafik menjadi kosong.
 
 ```bash
 pip install -r requirements.txt        # pandas, scikit-learn, mlxtend, dash, dll.
-python main.py --phase all             # Phase 1–4 berurutan
+python main.py --phase all             # Phase 1 sampai 4 berurutan
 python main.py --phase 5               # dashboard di http://127.0.0.1:8050
 ```
 
-Urutan fase wajib: Phase 2 butuh output Phase 1; Phase 4 butuh output Phase 2;
-dashboard butuh output Phase 3 & 4. Semua acakan memakai `RANDOM_STATE=42`
-sehingga angka di laporan ini dapat direproduksi identik.
+Urutan fase bersifat wajib. Phase 2 membutuhkan output Phase 1, Phase 4
+membutuhkan output Phase 2, dan dashboard membutuhkan output Phase 3 serta 4.
+Semua proses acak memakai `RANDOM_STATE=42` sehingga angka di laporan ini dapat
+direproduksi secara identik.
 
 ### 7.2 Perkiraan waktu eksekusi
 
 | Fase | Perkiraan | Komponen dominan |
 |---|---|---|
-| Phase 1 | < 1 menit | plotting EDA |
-| Phase 2 | ~6–7 menit | exhaustive search 286 kombinasi dengan silhouette penuh (~5 menit, O(n²)); t-SNE (~30–60 dtk) |
-| Phase 3 | < 1 menit | loop auto-tune Apriori |
-| Phase 4 | < 1 menit | medcouple O(n²) tervektorisasi + IsolationForest 200 tree |
+| Phase 1 | di bawah 1 menit | plotting EDA |
+| Phase 2 | sekitar 6 sampai 7 menit | exhaustive search 286 kombinasi dengan silhouette penuh sekitar 5 menit, ditambah t-SNE sekitar 30 sampai 60 detik |
+| Phase 3 | di bawah 1 menit | loop auto-tune Apriori |
+| Phase 4 | di bawah 1 menit | medcouple O(n²) tervektorisasi dan Isolation Forest 200 tree |
 
 ### 7.3 Parameter kunci
 
 | Parameter | Nilai | Lokasi | Alasan |
 |---|---|---|---|
-| `WINSOR_LIMIT` | 0,02 | config / clustering | cap ekor atas 2% agar cluster digerakkan perilaku, bukan 1–2 outlier ekstrem |
-| `BEST_K` | 3 | config / clustering | silhouette tinggi + segmen ketiga yang actionable (justifikasi di `find_optimal_k`) |
-| `DBSCAN_MIN_SAMPLES` | 10 | config / clustering | ukuran minimum core-neighborhood yang stabil pada n=5.000 |
-| `MIN_LIFT` / `MIN_CONFIDENCE` | 1,4 / 0,5 | arm | ambang kualitas rule; TIDAK dilonggarkan saat auto-tune |
-| `min_support` (hasil tune) | 0,01 | arm (otomatis) | support terbesar yang menghasilkan ≥10 rule |
-| `MODZ_THRESH` | 3,5 | config / anomaly | ambang baku modified z-score (Iglewicz & Hoaglin) |
-| `GAP_MIN/MAX_FRAC` | 0,005 / 0,15 | config / anomaly | jendela pencarian gap IsoForest — cegah cut degeneratif |
-| `Z_THRESH`, `IF_CONTAMINATION` | 3,0 / 0,05 | config / anomaly | dipertahankan HANYA sebagai pembanding versi standar |
+| `WINSOR_LIMIT` | 0,02 | config, clustering | menutup ekor atas 2% supaya cluster digerakkan perilaku dan bukan 1 sampai 2 outlier ekstrem |
+| `BEST_K` | 3 | config, clustering | silhouette tinggi ditambah segmen ketiga yang actionable, justifikasi ada di `find_optimal_k` |
+| `DBSCAN_MIN_SAMPLES` | 10 | config, clustering | ukuran minimum core-neighborhood yang stabil pada n=5.000 |
+| `MIN_LIFT` dan `MIN_CONFIDENCE` | 1,4 dan 0,5 | arm | ambang kualitas rule yang tidak dilonggarkan saat auto-tune |
+| `min_support` hasil tune | 0,01 | arm (otomatis) | support terbesar yang masih menghasilkan minimal 10 rule |
+| `MODZ_THRESH` | 3,5 | config, anomaly | ambang baku modified z-score mengikuti Iglewicz dan Hoaglin |
+| `GAP_MIN_FRAC` dan `GAP_MAX_FRAC` | 0,005 dan 0,15 | config, anomaly | jendela pencarian gap Isolation Forest untuk mencegah cut degeneratif |
+| `Z_THRESH` dan `IF_CONTAMINATION` | 3,0 dan 0,05 | config, anomaly | dipertahankan hanya sebagai pembanding versi standar |
 
 ### 7.4 Keterbatasan teknis yang disadari
 
-- **Silhouette dan medcouple O(n²)** — masih nyaman di n=5.000; untuk dataset
-  jauh lebih besar perlu sampling (kode sudah menyediakan parameter `sample`)
-  atau implementasi medcouple O(n log n).
-- **Dendrogram di-sampel 1.000 baris** — hanya visualisasinya; label
-  hierarchical final tetap dihitung pada seluruh data.
-- **Dashboard memuat data saat startup** — bila pipeline dijalankan ulang,
-  dashboard perlu di-restart (refresh browser tidak memuat ulang CSV).
-- **Jendela gap IsoForest (0,5%–15%)** adalah pilihan desain; di luar rentang
-  itu cut dianggap degeneratif. Sensitivitasnya rendah pada data ini karena
-  gap terpilih 66× lipat gap tipikal.
+Silhouette dan medcouple sama-sama berbiaya O(n²). Biaya ini masih nyaman pada
+n=5.000. Untuk dataset yang jauh lebih besar diperlukan sampling, dan kode sudah
+menyediakan parameter `sample`, atau implementasi medcouple yang O(n log n).
+
+Dendrogram di-sampel 1.000 baris hanya untuk keperluan visualisasi. Label
+hierarchical final tetap dihitung pada seluruh data.
+
+Dashboard memuat data saat startup. Bila pipeline dijalankan ulang, dashboard
+perlu di-restart karena refresh browser tidak memuat ulang CSV.
+
+Jendela gap Isolation Forest 0,5% sampai 15% adalah pilihan desain, dan di luar
+rentang itu cut dianggap degeneratif. Sensitivitasnya rendah pada data ini karena
+gap terpilih bernilai sekitar 66 kali gap tipikal.
