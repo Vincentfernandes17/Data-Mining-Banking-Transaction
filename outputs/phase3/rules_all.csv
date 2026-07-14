@@ -27,16 +27,16 @@ Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
 26,"Account Type=Current, Card Type=Visa, Loan_Size=Large, Transaction_Size=Very Large",Rate_Category=Low,0.0108,0.5047,1.5011
 27,"Account Type=Current, CC_Utilization_Category=Low, Transaction Type=Withdrawal, Transaction_Size=Large",Feedback Type=Suggestion,0.01,0.5051,1.4951
 28,"Account Type=Current, Card Type=MasterCard, Feedback Type=Suggestion, Loan_Size=Very Large",CC_Utilization_Category=Low,0.0102,0.505,1.4931
-29,"Balance_Bucket=Comfortable, Card Type=AMEX, Feedback Type=Complaint, Loan_Size=Large",Rate_Category=High,0.0104,0.5049,1.4919
-30,"Gender=Other, Loan Status=Rejected, Resolution Status=Pending, Transaction_Size=Large",Rate_Category=High,0.0104,0.5049,1.4919
+29,"Gender=Other, Loan Status=Rejected, Resolution Status=Pending, Transaction_Size=Large",Rate_Category=High,0.0104,0.5049,1.4919
+30,"Balance_Bucket=Comfortable, Card Type=AMEX, Feedback Type=Complaint, Loan_Size=Large",Rate_Category=High,0.0104,0.5049,1.4919
 31,"Account Type=Current, Feedback Type=Praise, Gender=Other, Transaction Type=Transfer",Rate_Category=High,0.0106,0.5048,1.4916
 32,"Account Type=Savings, Gender=Other, Loan Status=Rejected, Transaction Type=Withdrawal",Transaction_Size=Large,0.0106,0.6023,1.4893
 33,"Account Type=Current, CC_Utilization_Category=Moderate, Card Type=MasterCard, Loan_Size=Very Large",Feedback Type=Complaint,0.0112,0.5,1.4872
 34,"Balance_Bucket=Mass-Market, Card Type=AMEX, Resolution Status=Pending, Transaction Type=Deposit",CC_Utilization_Category=Moderate,0.0116,0.5631,1.4826
-35,"Account Type=Current, Balance_Bucket=Mass-Market, Card Type=MasterCard, Loan Type=Auto",Feedback Type=Suggestion,0.011,0.5,1.4802
-36,"Loan Status=Closed, Resolution Status=Pending, Transaction Type=Withdrawal, Transaction_Size=Large",Feedback Type=Suggestion,0.0104,0.5,1.4802
-37,"Account Type=Savings, CC_Utilization_Category=Moderate, Feedback Type=Complaint, Loan Status=Approved",Balance_Bucket=Mass-Market,0.0108,0.5094,1.4801
-38,"Card Type=Visa, Rate_Category=High, Resolution Status=Resolved, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.0108,0.5094,1.4801
+35,"Loan Status=Closed, Resolution Status=Pending, Transaction Type=Withdrawal, Transaction_Size=Large",Feedback Type=Suggestion,0.0104,0.5,1.4802
+36,"Account Type=Current, Balance_Bucket=Mass-Market, Card Type=MasterCard, Loan Type=Auto",Feedback Type=Suggestion,0.011,0.5,1.4802
+37,"Card Type=Visa, Rate_Category=High, Resolution Status=Resolved, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.0108,0.5094,1.4801
+38,"Account Type=Savings, CC_Utilization_Category=Moderate, Feedback Type=Complaint, Loan Status=Approved",Balance_Bucket=Mass-Market,0.0108,0.5094,1.4801
 39,"Account Type=Savings, Card Type=Visa, Loan Status=Approved, Rate_Category=High",Balance_Bucket=Mass-Market,0.011,0.5093,1.4795
 40,"Account Type=Savings, Card Type=Visa, Gender=Other, Resolution Status=Pending",Rate_Category=High,0.0128,0.5,1.4775
 41,"Rate_Category=Moderate, Resolution Status=Pending, Transaction Type=Transfer, Transaction_Size=Very Large",Loan Status=Approved,0.01,0.5051,1.4768
@@ -44,11 +44,11 @@ Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
 43,"Loan Status=Closed, Loan_Size=Large, Resolution Status=Pending, Transaction Type=Transfer",Transaction_Size=Large,0.0106,0.5955,1.4726
 44,"Card Type=AMEX, Loan Status=Approved, Rate_Category=Low, Resolution Status=Pending",Transaction Type=Deposit,0.0108,0.5,1.4723
 45,"CC_Utilization_Category=Moderate, Card Type=MasterCard, Loan_Size=Large, Resolution Status=Resolved",Transaction_Size=Large,0.01,0.5952,1.4719
-46,"Card Type=AMEX, Rate_Category=Low, Resolution Status=Pending, Transaction Type=Deposit",Loan Status=Approved,0.0108,0.5,1.462
-47,"Account Type=Current, Feedback Type=Suggestion, Gender=Female, Rate_Category=Low",Loan Status=Approved,0.0106,0.5,1.462
-48,"CC_Utilization_Category=Low, Rate_Category=Moderate, Resolution Status=Resolved, Transaction Type=Deposit",Loan Status=Approved,0.01,0.5,1.462
-49,"Card Type=Visa, Resolution Status=Resolved, Transaction Type=Deposit, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.0108,0.5,1.4526
-50,"Card Type=Visa, Gender=Male, Resolution Status=Resolved, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.01,0.5,1.4526
+46,"CC_Utilization_Category=Low, Rate_Category=Moderate, Resolution Status=Resolved, Transaction Type=Deposit",Loan Status=Approved,0.01,0.5,1.462
+47,"Card Type=AMEX, Rate_Category=Low, Resolution Status=Pending, Transaction Type=Deposit",Loan Status=Approved,0.0108,0.5,1.462
+48,"Account Type=Current, Feedback Type=Suggestion, Gender=Female, Rate_Category=Low",Loan Status=Approved,0.0106,0.5,1.462
+49,"Card Type=Visa, Gender=Male, Resolution Status=Resolved, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.01,0.5,1.4526
+50,"Card Type=Visa, Resolution Status=Resolved, Transaction Type=Deposit, Transaction_Size=Large",Balance_Bucket=Mass-Market,0.0108,0.5,1.4526
 51,"Account Type=Savings, Age_Group=Established, Feedback Type=Praise, Resolution Status=Pending",Gender=Female,0.0102,0.5,1.4476
 52,"Balance_Bucket=Comfortable, Feedback Type=Praise, Loan Status=Rejected, Rate_Category=Low",Gender=Female,0.0106,0.5,1.4476
 53,"Account Type=Savings, Gender=Female, Loan Status=Closed, Loan Type=Personal",Transaction_Size=Large,0.0104,0.5843,1.4448
@@ -62,8 +62,8 @@ Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
 61,"Feedback Type=Complaint, Gender=Female, Resolution Status=Resolved, Transaction Type=Deposit",CC_Utilization_Category=Moderate,0.011,0.5392,1.4197
 62,"Account Type=Current, Age_Group=Established, Feedback Type=Suggestion, Gender=Female",Resolution Status=Pending,0.0108,0.7105,1.4188
 63,"Account Type=Current, Age_Group=Established, Loan Status=Approved, Resolution Status=Pending",Transaction_Size=Very Large,0.0146,0.5615,1.418
-64,"Account Type=Savings, Loan Status=Rejected, Loan Type=Auto, Rate_Category=Low",Transaction_Size=Large,0.0104,0.5714,1.413
-65,"Account Type=Savings, Feedback Type=Praise, Loan Status=Rejected, Loan Type=Auto",Transaction_Size=Large,0.0104,0.5714,1.413
+64,"Account Type=Savings, Feedback Type=Praise, Loan Status=Rejected, Loan Type=Auto",Transaction_Size=Large,0.0104,0.5714,1.413
+65,"Account Type=Savings, Loan Status=Rejected, Loan Type=Auto, Rate_Category=Low",Transaction_Size=Large,0.0104,0.5714,1.413
 66,"Age_Group=Pre-Retirement, Card Type=MasterCard, Loan_Size=Medium, Resolution Status=Pending",Account Type=Savings,0.0102,0.7083,1.4127
 67,"Card Type=Visa, Feedback Type=Praise, Loan_Size=Large, Resolution Status=Pending",Balance_Bucket=Comfortable,0.0118,0.7195,1.4125
 68,"CC_Utilization_Category=Low, Gender=Male, Loan Type=Mortgage, Resolution Status=Resolved",Transaction_Size=Very Large,0.0104,0.5591,1.412
@@ -72,8 +72,8 @@ Rank,Antecedent (IF),Consequent (THEN),Support,Confidence,Lift
 71,"Account Type=Current, Age_Group=Pre-Retirement, Balance_Bucket=Comfortable, Loan Status=Approved",Transaction_Size=Very Large,0.0134,0.5583,1.4099
 72,"Balance_Bucket=Mass-Market, Feedback Type=Complaint, Rate_Category=Moderate, Resolution Status=Resolved",Transaction_Size=Very Large,0.0116,0.5577,1.4083
 73,"CC_Utilization_Category=Low, Feedback Type=Praise, Transaction Type=Transfer, Transaction_Size=Very Large",Resolution Status=Resolved,0.0104,0.7027,1.4077
-74,"Account Type=Current, Card Type=Visa, Loan_Size=Large, Rate_Category=Low",Transaction_Size=Very Large,0.0108,0.5567,1.4058
-75,"Feedback Type=Complaint, Loan Type=Mortgage, Rate_Category=Moderate, Resolution Status=Resolved",Transaction_Size=Very Large,0.0108,0.5567,1.4058
+74,"Feedback Type=Complaint, Loan Type=Mortgage, Rate_Category=Moderate, Resolution Status=Resolved",Transaction_Size=Very Large,0.0108,0.5567,1.4058
+75,"Account Type=Current, Card Type=Visa, Loan_Size=Large, Rate_Category=Low",Transaction_Size=Very Large,0.0108,0.5567,1.4058
 76,"Account Type=Current, Feedback Type=Suggestion, Loan Status=Approved, Transaction Type=Transfer",Transaction_Size=Very Large,0.0118,0.5566,1.4056
 77,"CC_Utilization_Category=Moderate, Loan Status=Approved, Loan_Size=Large, Transaction Type=Deposit",Resolution Status=Pending,0.0114,0.7037,1.4052
 78,"Age_Group=Early Career, Loan Status=Closed, Transaction_Size=Very Large",CC_Utilization_Category=Moderate,0.0114,0.5327,1.4026

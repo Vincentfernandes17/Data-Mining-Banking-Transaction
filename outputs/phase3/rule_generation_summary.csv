@@ -1,0 +1,9 @@
+Metric,Value
+Frequent itemsets,69281.0
+Rules generated (before filtering),1083726.0
+Rules retained (after filtering),82.0
+min_support,0.01
+min_confidence,0.5
+min_lift,1.4
+Highest lift (retained),1.6618
+Lowest lift (retained),1.401

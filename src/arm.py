@@ -593,11 +593,37 @@ def run_arm(path=None):
 
     # [4] Summary statistik rules
     print(f"\n[4/6] Summary rules...")
-    print(f"Total rules          : {len(rules)}")
+
+    # Jumlah rules yang DIBANGKITKAN sebelum filter kualitas: semua rule yang
+    # bisa diturunkan dari frequent itemsets (min_threshold confidence 0), lalu
+    # dibandingkan dengan yang DIPERTAHANKAN setelah filter (lift ≥ 1.4,
+    # confidence ≥ 0.5, buang antecedent = consequent). Angka ini diminta rubrik.
+    all_rules = association_rules(frequent_itemsets, metric='confidence',
+                                  min_threshold=0.0)
+    n_generated = len(all_rules)
+    n_retained  = len(rules)
+    print(f"Rules dibangkitkan (sebelum filter) : {n_generated}")
+    print(f"Rules dipertahankan (setelah filter): {n_retained} "
+          f"(lift ≥ {MIN_LIFT}, confidence ≥ {MIN_CONFIDENCE}, non-trivial)")
     print(f"min_support dipakai  : {best_support}")
     print(f"Lift range           : {rules['lift'].min():.3f} – {rules['lift'].max():.3f}")
     print(f"Confidence range     : {rules['confidence'].min():.3f} – {rules['confidence'].max():.3f}")
     print(f"Support range        : {rules['support'].min():.4f} – {rules['support'].max():.4f}")
+
+    # Simpan ringkasan generasi rules untuk laporan (Appendix D)
+    pd.DataFrame([
+        ('Frequent itemsets',                    len(frequent_itemsets)),
+        ('Rules generated (before filtering)',   n_generated),
+        ('Rules retained (after filtering)',     n_retained),
+        ('min_support',                          best_support),
+        ('min_confidence',                       MIN_CONFIDENCE),
+        ('min_lift',                             MIN_LIFT),
+        ('Highest lift (retained)',              round(float(rules['lift'].max()), 4)),
+        ('Lowest lift (retained)',               round(float(rules['lift'].min()), 4)),
+    ], columns=['Metric', 'Value']).to_csv(
+        os.path.join(OUTPUT_DIR, 'rule_generation_summary.csv'), index=False)
+    print(f"✅ Ringkasan generasi rules tersimpan → "
+          f"{os.path.join(OUTPUT_DIR, 'rule_generation_summary.csv')}")
 
     # [5] Visualisasi
     print("\n[5/6] Visualisasi...")
