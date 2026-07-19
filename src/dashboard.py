@@ -106,6 +106,7 @@ def fig_cluster_map(df, method, x, y):
         df, x=x, y=y, color=method,
         color_discrete_map=color_map,
         opacity=0.55, log_x=True, log_y=True,
+        render_mode='webgl',   # WebGL: render 5000 titik jauh lebih cepat dari SVG
         labels={x: RATIO_LABEL.get(x, x), y: RATIO_LABEL.get(y, y)},
         hover_data=['Age', 'Account Balance', 'Credit Limit', 'Loan Amount'],
         title=f'Peta Segmen — {METHOD_LABEL.get(method, method)}',
@@ -181,56 +182,103 @@ def fig_feature_selection():
     return fig
 
 
-def fig_rule_network(rules, min_lift):
-    """Jaringan association rules: node = item, edge = relasi IF→THEN
-    (difilter lift ≥ slider). Ukuran/warna node = seberapa sering item
-    muncul di rule (degree). Layout spring dengan seed tetap."""
-    if rules.empty:
-        return go.Figure().update_layout(title='Tidak ada rules')
-    sub = rules[rules['Lift'] >= min_lift]
-    if sub.empty:
-        return go.Figure().update_layout(title=f'Tidak ada rule dengan Lift ≥ {min_lift}')
+def _short(s):
+    """'Loan Status=Closed' → 'Closed' untuk label node yang ringkas."""
+    return str(s).split('=')[-1].strip()
 
+
+def build_rule_graph(rules):
+    """Bangun SATU DiGraph berarah dari seluruh rules: node = item, edge
+    berarah dari tiap antecedent (IF) ke tiap consequent (THEN). Bila sebuah
+    pasangan item muncul di banyak rule, edge menyimpan lift TERTINGGI dan
+    jumlah kemunculannya. Layout dihitung SEKALI di sini (spring, seed tetap)
+    lalu dipakai ulang saat slider digeser, sehingga interaksi tetap cepat
+    dan posisi node stabil. Mengembalikan (G, pos)."""
     G = nx.DiGraph()
-    for _, r in sub.iterrows():
+    if rules.empty:
+        return G, {}
+    for _, r in rules.iterrows():
         ants = [a.strip() for a in str(r['Antecedent (IF)']).split(',')]
         cons = [c.strip() for c in str(r['Consequent (THEN)']).split(',')]
+        lift = float(r['Lift'])
         for a in ants:
             for c in cons:
-                G.add_edge(a, c, lift=r['Lift'])
+                if a == c:
+                    continue
+                if G.has_edge(a, c):
+                    G[a][c]['lift'] = max(G[a][c]['lift'], lift)
+                    G[a][c]['n'] += 1
+                else:
+                    G.add_edge(a, c, lift=lift, n=1)
+    pos = nx.spring_layout(G, k=0.9, seed=42) if G.number_of_nodes() else {}
+    return G, pos
 
-    pos = nx.spring_layout(G, k=0.9, seed=42)
-    edge_x, edge_y = [], []
-    for a, c in G.edges():
-        edge_x += [pos[a][0], pos[c][0], None]
-        edge_y += [pos[a][1], pos[c][1], None]
-    edge_trace = go.Scatter(x=edge_x, y=edge_y, mode='lines',
-                            line=dict(width=1, color='#aaaaaa'),
-                            hoverinfo='none')
 
-    # ukuran node = derajat (seberapa sering item muncul di rule)
-    deg = dict(G.degree())
-    short = lambda s: s.split('=')[-1].strip()   # 'Loan Status=Closed' → 'Closed'
+def fig_rule_network(G, pos, min_lift, max_arrows=140):
+    """Jaringan association rules BERARAH. Panah menunjuk dari kondisi (IF)
+    ke hasil (THEN), difilter lift ≥ slider. Panah digambar sebagai anotasi
+    dengan arrowhead sehingga arah relasi jelas terbaca. Ukuran & warna node
+    = derajat (seberapa sering item terlibat). Layout `pos` dihitung sekali
+    di build_rule_graph agar callback slider ringan (<100ms)."""
+    if G.number_of_nodes() == 0:
+        return go.Figure().update_layout(title='Tidak ada rules')
+
+    # Edge yang lolos filter lift; simpul yang dipakai hanya yang tersentuh edge.
+    kept = [(a, c, d) for a, c, d in G.edges(data=True) if d['lift'] >= min_lift]
+    if not kept:
+        return go.Figure().update_layout(
+            title=f'Tidak ada relasi dengan Lift ≥ {min_lift:.2f}')
+    nodes = sorted({n for a, c, _ in kept for n in (a, c)})
+    subdeg = {n: 0 for n in nodes}
+    for a, c, _ in kept:
+        subdeg[a] += 1
+        subdeg[c] += 1
+
+    # Panah: satu anotasi berarah per edge (dibatasi max_arrows demi kecepatan
+    # & keterbacaan; edge lift tertinggi diprioritaskan).
+    kept_sorted = sorted(kept, key=lambda t: t[2]['lift'], reverse=True)
+    shown = kept_sorted[:max_arrows]
+    lifts = [d['lift'] for _, _, d in shown]
+    lo, hi = (min(lifts), max(lifts)) if lifts else (1.0, 1.0)
+    def _grey(lift):
+        t = 0.0 if hi == lo else (lift - lo) / (hi - lo)   # lift tinggi = lebih gelap
+        v = int(170 - 120 * t)
+        return f'rgb({v},{v},{v})'
+    annotations = []
+    for a, c, d in shown:
+        ax_, ay_ = pos[a]
+        cx_, cy_ = pos[c]
+        annotations.append(dict(
+            x=cx_, y=cy_, ax=ax_, ay=ay_,
+            xref='x', yref='y', axref='x', ayref='y',
+            showarrow=True, arrowhead=3, arrowsize=1.3,
+            arrowwidth=1.1 + 1.4 * (0 if hi == lo else (d['lift'] - lo) / (hi - lo)),
+            arrowcolor=_grey(d['lift']), opacity=0.85, standoff=6, startstandoff=6))
+
     node_trace = go.Scatter(
-        x=[pos[n][0] for n in G.nodes()],
-        y=[pos[n][1] for n in G.nodes()],
+        x=[pos[n][0] for n in nodes],
+        y=[pos[n][1] for n in nodes],
         mode='markers+text',
-        text=[short(n) for n in G.nodes()],
+        text=[_short(n) for n in nodes],
         textposition='top center', textfont=dict(size=10),
-        marker=dict(size=[8 + 4 * deg[n] for n in G.nodes()],
-                    color=[deg[n] for n in G.nodes()],
+        marker=dict(size=[9 + 4 * subdeg[n] for n in nodes],
+                    color=[subdeg[n] for n in nodes],
                     colorscale='YlOrRd', showscale=True,
-                    colorbar=dict(title='Keterhubungan')),
-        hovertext=[f'{n} (muncul di {deg[n]} relasi)' for n in G.nodes()],
+                    colorbar=dict(title='Keterhubungan'),
+                    line=dict(width=1, color='#555')),
+        hovertext=[f'{n} (terlibat di {subdeg[n]} relasi)' for n in nodes],
         hoverinfo='text')
-    xs = [pos[n][0] for n in G.nodes()]
-    ys = [pos[n][1] for n in G.nodes()]
-    padx = (max(xs) - min(xs)) * 0.25 + 0.15   # ruang ekstra agar label tepi tak terpotong
+
+    xs = [pos[n][0] for n in nodes]
+    ys = [pos[n][1] for n in nodes]
+    padx = (max(xs) - min(xs)) * 0.25 + 0.15
     pady = (max(ys) - min(ys)) * 0.20 + 0.15
-    fig = go.Figure([edge_trace, node_trace])
+    capped = '' if len(kept) <= max_arrows else f' (panah dibatasi {max_arrows} lift tertinggi)'
+    fig = go.Figure([node_trace])
     fig.update_layout(
-        title=f'Jaringan Association Rules (Lift ≥ {min_lift}) — {len(sub)} rule',
-        showlegend=False, height=600,
+        title=f'Jaringan Association Rules BERARAH (Lift ≥ {min_lift:.2f}) — '
+              f'{len(kept)} relasi{capped}. Panah IF → THEN.',
+        showlegend=False, height=600, annotations=annotations,
         xaxis=dict(visible=False, range=[min(xs) - padx, max(xs) + padx]),
         yaxis=dict(visible=False, range=[min(ys) - pady, max(ys) + pady]),
         margin=dict(l=40, r=40, t=50, b=30))
@@ -246,6 +294,7 @@ def fig_rule_scatter(rules, min_lift):
     sub['Rule'] = sub['Antecedent (IF)'] + '  →  ' + sub['Consequent (THEN)']
     fig = px.scatter(sub, x='Support', y='Confidence', size='Lift', color='Lift',
                      color_continuous_scale='YlOrRd', hover_name='Rule',
+                     render_mode='webgl',
                      title='Support vs Confidence (ukuran & warna = Lift)')
     fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10))
     return fig
@@ -272,7 +321,7 @@ def fig_anomaly_scatter(df, x, y):
     fig = px.scatter(
         d, x=x, y=y, color='classification',
         color_discrete_map=CLASS_COLORS, opacity=0.6,
-        log_x=True, log_y=True,
+        log_x=True, log_y=True, render_mode='webgl',
         labels={x: RATIO_LABEL.get(x, x), y: RATIO_LABEL.get(y, y)},
         hover_data=['n_methods', 'KMeans_Segment'],
         title='Sebaran Anomali pada Ruang Rasio Perilaku')
@@ -314,11 +363,27 @@ def kpi_card(title, value, sub, color):
 # ════════════════════════════════════════════════════════════
 # APP
 # ════════════════════════════════════════════════════════════
+SECTION_STYLE = {'background': 'white', 'borderRadius': '12px',
+                 'boxShadow': '0 1px 4px rgba(0,0,0,0.08)',
+                 'margin': '16px 20px', 'padding': '8px 4px 18px'}
+
+
+def _section_header(num, title, subtitle):
+    """Header satu section pada dashboard single-page (nomor, judul, subjudul)."""
+    return html.Div([
+        html.H3(f'{num} · {title}', style={'margin': '0', 'color': '#1f3a5f'}),
+        html.Div(subtitle, style={'color': '#666', 'fontSize': '13px',
+                                  'marginTop': '2px'}),
+    ], style={'padding': '14px 20px 6px', 'borderBottom': '2px solid #eef1f5',
+              'marginBottom': '8px'})
+
+
 def build_app():
-    """Rakit aplikasi Dash lengkap: muat data, hitung KPI, susun layout
-    3 tab (Segmentasi / Association Rules / Anomali), dan daftarkan
-    callback interaktif. Dipisah dari run_dashboard agar bisa di-smoke-test
-    tanpa menyalakan server."""
+    """Rakit aplikasi Dash SINGLE-PAGE (tanpa tab, semua section tersusun
+    vertikal supaya tim bisa memindai seluruh temuan cepat tanpa klik).
+    Muat data, hitung KPI, precompute graph rule berarah + layout SEKALI
+    (agar slider ringan), susun layout, daftarkan callback. Dipisah dari
+    run_dashboard agar bisa di-smoke-test tanpa menyalakan server."""
     df, rules = load_dashboard_data()
     app = Dash(__name__)
     app.title = 'Banking KDD Dashboard'
@@ -334,18 +399,29 @@ def build_app():
     # slider tertinggi menyaring SEMUA rule → grafik kosong. Floor mencegahnya.
     slider_min = int(lift_min * 100) / 100
     slider_max = int(lift_max * 100) / 100
+    # Nilai awal slider sedikit di atas minimum agar tampilan awal jaringan tidak
+    # menjadi "bola benang"; pengguna bisa menurunkannya untuk melihat semua.
+    default_lift = round(float(rules['Lift'].median()), 2) if not rules.empty else slider_min
+    default_lift = min(max(default_lift, slider_min), slider_max)
 
-    tab_style = {'padding': '8px', 'fontWeight': '600'}
+    # Precompute graph rule BERARAH + layout SEKALI (bukan tiap callback) → cepat.
+    rule_graph, rule_pos = build_rule_graph(rules)
+
+    # Figur statis (tidak bergantung input) dibangun sekali.
+    fig_feat = fig_feature_selection()
+    fig_anom_break = fig_anomaly_breakdown(df)
+    fig_anom_seg = fig_anomaly_by_segment(df)
 
     app.layout = html.Div([
         html.Div([
             html.H2('🏦 Banking Transaction — Knowledge Discovery Dashboard',
                     style={'margin': '0'}),
             html.Div('Group 6 · KDD 5-Fase · Segmentasi · Association Rules · '
-                     'Anomaly Detection',
-                     style={'color': '#666', 'fontSize': '13px'}),
+                     'Anomaly Detection · satu halaman',
+                     style={'color': '#cdd7e5', 'fontSize': '13px'}),
         ], style={'padding': '14px 20px', 'background': '#1f3a5f',
-                  'color': 'white'}),
+                  'color': 'white', 'position': 'sticky', 'top': '0',
+                  'zIndex': '100'}),
 
         # KPI row
         html.Div([
@@ -357,104 +433,108 @@ def build_app():
         ], style={'display': 'flex', 'gap': '12px', 'padding': '16px 20px',
                   'flexWrap': 'wrap', 'background': '#eef1f5'}),
 
-        dcc.Tabs([
-            # ── TAB 1: SEGMEN ──
-            dcc.Tab(label='1 · Segmentasi Nasabah', style=tab_style, children=[
+        # ── SECTION 1: SEGMENTASI ──
+        html.Div([
+            _section_header('1', 'Segmentasi Nasabah',
+                            'Peta segmen, proporsi, profil rasio, dan komposisi '
+                            'demografis per segmen'),
+            html.Div([
                 html.Div([
-                    html.Div([
-                        html.Label('Metode clustering'),
-                        dcc.Dropdown(
-                            id='seg-method',
-                            options=[{'label': v, 'value': k}
-                                     for k, v in METHOD_LABEL.items()],
-                            value='KMeans_Segment', clearable=False),
-                    ], style={'flex': '1'}),
-                    html.Div([
-                        html.Label('Sumbu X'),
-                        dcc.Dropdown(id='seg-x',
-                                     options=[{'label': RATIO_LABEL[r], 'value': r}
-                                              for r in RATIOS],
-                                     value=RATIOS[1], clearable=False),
-                    ], style={'flex': '1'}),
-                    html.Div([
-                        html.Label('Sumbu Y'),
-                        dcc.Dropdown(id='seg-y',
-                                     options=[{'label': RATIO_LABEL[r], 'value': r}
-                                              for r in RATIOS],
-                                     value=RATIOS[2], clearable=False),
-                    ], style={'flex': '1'}),
-                ], style={'display': 'flex', 'gap': '12px', 'padding': '14px 20px'}),
-                html.Div([
-                    dcc.Graph(id='cluster-map', style={'flex': '3'}),
-                    dcc.Graph(id='segment-pie', style={'flex': '2'}),
-                ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px'}),
-                dcc.Graph(id='segment-profile', style={'padding': '0 16px'}),
-
-                # Profil demografis tambahan (kategorikal) per segmen
-                html.Div([
-                    html.Label('Fitur demografis untuk profil segmen'),
+                    html.Label('Metode clustering'),
                     dcc.Dropdown(
-                        id='seg-demo',
-                        options=[{'label': c, 'value': c}
-                                 for c in DEMOGRAPHICS if c in df.columns],
-                        value=next((c for c in DEMOGRAPHICS if c in df.columns), None),
-                        clearable=False),
-                ], style={'padding': '8px 20px'}),
-                dcc.Graph(id='segment-demographics', style={'padding': '0 16px'}),
-
-                # Validasi pemilihan fitur (statis) — kenapa 3 rasio ini
-                html.Div('Kenapa 3 rasio ini dipakai? Pencarian otomatis atas SEMUA '
-                         'kombinasi 3-fitur memilih ketiga rasio yang sama (peringkat #1), '
-                         'jauh mengungguli fitur mentah & PCA — pilihan domain tervalidasi '
-                         'secara data-driven.',
-                         style={'padding': '12px 24px 0', 'color': '#555',
-                                'fontSize': '13px'}),
-                dcc.Graph(id='feature-selection', figure=fig_feature_selection(),
-                          style={'padding': '0 16px 18px'}),
-            ]),
-
-            # ── TAB 2: ASSOCIATION RULES ──
-            dcc.Tab(label='2 · Association Rules', style=tab_style, children=[
+                        id='seg-method',
+                        options=[{'label': v, 'value': k}
+                                 for k, v in METHOD_LABEL.items()],
+                        value='KMeans_Segment', clearable=False),
+                ], style={'flex': '1'}),
                 html.Div([
-                    html.Label(f'Minimum Lift  (rentang {slider_min:.2f}–{slider_max:.2f})'),
-                    dcc.Slider(id='lift-slider', min=slider_min,
-                               max=slider_max, step=0.01,
-                               value=slider_min,
-                               marks={slider_min: f'{slider_min:.2f}',
-                                      slider_max: f'{slider_max:.2f}'},
-                               tooltip={'placement': 'bottom', 'always_visible': True}),
-                ], style={'padding': '14px 24px'}),
-                dcc.Graph(id='rule-network', style={'padding': '0 16px'}),
-                dcc.Graph(id='rule-scatter', style={'padding': '0 16px'}),
-                html.Div(id='rule-table', style={'padding': '12px 20px'}),
-            ]),
+                    html.Label('Sumbu X'),
+                    dcc.Dropdown(id='seg-x',
+                                 options=[{'label': RATIO_LABEL[r], 'value': r}
+                                          for r in RATIOS],
+                                 value=RATIOS[1], clearable=False),
+                ], style={'flex': '1'}),
+                html.Div([
+                    html.Label('Sumbu Y'),
+                    dcc.Dropdown(id='seg-y',
+                                 options=[{'label': RATIO_LABEL[r], 'value': r}
+                                          for r in RATIOS],
+                                 value=RATIOS[2], clearable=False),
+                ], style={'flex': '1'}),
+            ], style={'display': 'flex', 'gap': '12px', 'padding': '10px 20px'}),
+            html.Div([
+                dcc.Graph(id='cluster-map', style={'flex': '3'}),
+                dcc.Graph(id='segment-pie', style={'flex': '2'}),
+            ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px'}),
+            dcc.Graph(id='segment-profile', style={'padding': '0 16px'}),
+            html.Div([
+                html.Label('Fitur demografis untuk profil segmen'),
+                dcc.Dropdown(
+                    id='seg-demo',
+                    options=[{'label': c, 'value': c}
+                             for c in DEMOGRAPHICS if c in df.columns],
+                    value=next((c for c in DEMOGRAPHICS if c in df.columns), None),
+                    clearable=False),
+            ], style={'padding': '8px 20px'}),
+            dcc.Graph(id='segment-demographics', style={'padding': '0 16px'}),
+            html.Div('Kenapa 3 rasio ini dipakai? Pencarian otomatis atas SEMUA '
+                     'kombinasi 3-fitur memilih ketiga rasio yang sama (peringkat #1), '
+                     'jauh mengungguli fitur mentah & PCA — pilihan domain tervalidasi '
+                     'secara data-driven.',
+                     style={'padding': '12px 24px 0', 'color': '#555',
+                            'fontSize': '13px'}),
+            dcc.Graph(id='feature-selection', figure=fig_feat,
+                      style={'padding': '0 16px 6px'}),
+        ], style=SECTION_STYLE),
 
-            # ── TAB 3: ANOMALI ──
-            dcc.Tab(label='3 · Anomaly Detection', style=tab_style, children=[
+        # ── SECTION 2: ASSOCIATION RULES ──
+        html.Div([
+            _section_header('2', 'Association Rules',
+                            'Jaringan relasi BERARAH (panah IF → THEN), sebaran '
+                            'support–confidence, dan tabel rule'),
+            html.Div([
+                html.Label(f'Minimum Lift  (rentang {slider_min:.2f}–{slider_max:.2f})'),
+                dcc.Slider(id='lift-slider', min=slider_min,
+                           max=slider_max, step=0.01,
+                           value=default_lift,
+                           marks={slider_min: f'{slider_min:.2f}',
+                                  slider_max: f'{slider_max:.2f}'},
+                           tooltip={'placement': 'bottom', 'always_visible': True}),
+            ], style={'padding': '14px 24px'}),
+            dcc.Graph(id='rule-network', style={'padding': '0 16px'}),
+            dcc.Graph(id='rule-scatter', style={'padding': '0 16px'}),
+            html.Div(id='rule-table', style={'padding': '12px 20px'}),
+        ], style=SECTION_STYLE),
+
+        # ── SECTION 3: ANOMALI ──
+        html.Div([
+            _section_header('3', 'Anomaly Detection',
+                            'Klasifikasi anomali, konsentrasi risiko per segmen, '
+                            'dan sebarannya di ruang rasio perilaku'),
+            html.Div([
+                dcc.Graph(id='anom-breakdown', style={'flex': '1'},
+                          figure=fig_anom_break),
+                dcc.Graph(id='anom-by-seg', style={'flex': '1'},
+                          figure=fig_anom_seg),
+            ], style={'display': 'flex', 'gap': '8px', 'padding': '12px 16px'}),
+            html.Div([
+                html.Label('Sumbu X / Y anomaly scatter'),
                 html.Div([
-                    dcc.Graph(id='anom-breakdown', style={'flex': '1'},
-                              figure=fig_anomaly_breakdown(df)),
-                    dcc.Graph(id='anom-by-seg', style={'flex': '1'},
-                              figure=fig_anomaly_by_segment(df)),
-                ], style={'display': 'flex', 'gap': '8px', 'padding': '12px 16px'}),
-                html.Div([
-                    html.Label('Sumbu X / Y anomaly scatter'),
-                    html.Div([
-                        dcc.Dropdown(id='anom-x',
-                                     options=[{'label': RATIO_LABEL[r], 'value': r}
-                                              for r in RATIOS],
-                                     value=RATIOS[1], clearable=False,
-                                     style={'flex': '1'}),
-                        dcc.Dropdown(id='anom-y',
-                                     options=[{'label': RATIO_LABEL[r], 'value': r}
-                                              for r in RATIOS],
-                                     value=RATIOS[2], clearable=False,
-                                     style={'flex': '1'}),
-                    ], style={'display': 'flex', 'gap': '12px'}),
-                ], style={'padding': '8px 20px'}),
-                dcc.Graph(id='anom-scatter', style={'padding': '0 16px'}),
-            ]),
-        ]),
+                    dcc.Dropdown(id='anom-x',
+                                 options=[{'label': RATIO_LABEL[r], 'value': r}
+                                          for r in RATIOS],
+                                 value=RATIOS[1], clearable=False,
+                                 style={'flex': '1'}),
+                    dcc.Dropdown(id='anom-y',
+                                 options=[{'label': RATIO_LABEL[r], 'value': r}
+                                          for r in RATIOS],
+                                 value=RATIOS[2], clearable=False,
+                                 style={'flex': '1'}),
+                ], style={'display': 'flex', 'gap': '12px'}),
+            ], style={'padding': '8px 20px'}),
+            dcc.Graph(id='anom-scatter', style={'padding': '0 16px'}),
+        ], style=SECTION_STYLE),
+
         html.Div('Dibuat dengan Python Dash · data: Phase 1–4 pipeline',
                  style={'textAlign': 'center', 'color': '#999',
                         'fontSize': '11px', 'padding': '12px'}),
@@ -485,7 +565,8 @@ def build_app():
                         'whiteSpace': 'normal', 'height': 'auto'},
             style_header={'fontWeight': 'bold', 'background': '#eef1f5'},
             page_size=10, sort_action='native')
-        return (fig_rule_network(rules, min_lift),
+        # Pakai graph + layout yang sudah di-precompute → callback ringan.
+        return (fig_rule_network(rule_graph, rule_pos, min_lift),
                 fig_rule_scatter(rules, min_lift), table)
 
     @app.callback(
