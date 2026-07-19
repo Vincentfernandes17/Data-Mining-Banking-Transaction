@@ -193,6 +193,93 @@ def fig_feature_selection():
     return fig
 
 
+# ── Phase 1: Preprocessing (figur dihitung ulang dari data, bukan angka hafalan)
+# Fitur mentah yang tersedia di dataset_final untuk perbandingan struktur.
+RAW_NUMERIC = ['Age', 'Account Balance', 'Transaction Amount', 'Loan Amount',
+               'Credit Limit', 'Credit Card Balance', 'Rewards Points',
+               'Interest Rate', 'Account_Age_Years',
+               'Days_Since_Last_Transaction']
+
+
+def fig_raw_vs_ratio_skew(df):
+    """Inti keputusan Phase 1: kenapa clustering TIDAK memakai fitur mentah.
+
+    Skewness |skew| tiap fitur mentah vs tiga rasio perilaku hasil rekayasa.
+    Fitur mentah nyaris uniform (|skew| ~ 0 = tidak ada struktur, tidak ada
+    cluster alami), sedangkan rasio antar dua fitur uniform justru melahirkan
+    distribusi berekor panjang (|skew| besar) yang bisa disegmentasi."""
+    rows = []
+    for c in RAW_NUMERIC:
+        if c in df.columns:
+            rows.append((c, abs(float(df[c].skew())), 'Fitur mentah'))
+    for c in RATIOS:
+        if c in df.columns:
+            rows.append((RATIO_LABEL.get(c, c), abs(float(df[c].skew())),
+                         'Rasio hasil rekayasa'))
+    sk = pd.DataFrame(rows, columns=['Fitur', 'Skew', 'Kelompok'])
+    sk = sk.sort_values('Skew')
+    fig = px.bar(sk, x='Skew', y='Fitur', orientation='h', color='Kelompok',
+                 color_discrete_map={'Fitur mentah': '#bdc3c7',
+                                     'Rasio hasil rekayasa': '#2ecc71'},
+                 text=[f'{v:.2f}' for v in sk['Skew']],
+                 title='Kenapa clustering memakai RASIO, bukan fitur mentah '
+                       '— |skewness| per fitur')
+    fig.update_traces(textposition='outside', cliponaxis=False)
+    fig.update_layout(height=460, xaxis_title='|Skewness| (0 = uniform, '
+                                              'tidak ada struktur)',
+                      yaxis_title='', legend_title_text='',
+                      margin=dict(l=10, r=40, t=60, b=10))
+    return fig
+
+
+def fig_prescaling_scaler_choice(df):
+    """Deteksi outlier pra-scaling (IQR) yang menentukan pilihan scaler.
+
+    Outlier sengaja TIDAK dihapus (bisa jadi sinyal nyata yang diselidiki di
+    Phase 4); persentasenya dipakai memilih scaler per fitur — RobustScaler
+    (median/IQR, kebal outlier) bila outlier >5% atau |skew|>1, selain itu
+    MinMaxScaler. Logika di sini sama persis dengan preprocess.py."""
+    rows = []
+    for c in RAW_NUMERIC + RATIOS:
+        if c not in df.columns:
+            continue
+        q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
+        iqr = q3 - q1
+        pct = float(((df[c] < q1 - 1.5 * iqr) | (df[c] > q3 + 1.5 * iqr)).mean() * 100)
+        skew = abs(float(df[c].skew()))
+        scaler = 'RobustScaler' if (pct > 5 or skew > 1) else 'MinMaxScaler'
+        rows.append((RATIO_LABEL.get(c, c), pct, scaler))
+    out = pd.DataFrame(rows, columns=['Fitur', 'Persen', 'Scaler'])
+    out = out.sort_values('Persen')
+    fig = px.bar(out, x='Persen', y='Fitur', orientation='h', color='Scaler',
+                 color_discrete_map={'RobustScaler': '#e74c3c',
+                                     'MinMaxScaler': '#2ecc71'},
+                 text=[f'{v:.1f}%' for v in out['Persen']],
+                 title='Outlier pra-scaling (IQR) menentukan scaler per fitur')
+    fig.update_traces(textposition='outside', cliponaxis=False)
+    fig.update_layout(height=460, xaxis_title='% baris di luar pagar IQR',
+                      yaxis_title='', legend_title_text='Scaler terpilih',
+                      margin=dict(l=10, r=40, t=60, b=10))
+    return fig
+
+
+# Ambang binning domain-tetap (dipakai Phase 3 / Apriori) + alasannya.
+BINNING_ROWS = [
+    ('Age_Group', 'Young Adult · Early Career · Established · Pre-Retirement · Senior',
+     'Tahap hidup finansial (Life-Cycle Hypothesis), bukan kuantil'),
+    ('Balance_Bucket', 'Below-Minimum (<$1.500) · Mass-Market · Comfortable (≥$5.000)',
+     'Ambang saldo minimum perbankan ritel'),
+    ('Transaction_Size', 'Everyday (<$1.000) · Large · Very Large (>$3.000)',
+     'Tier pemantauan nominal transaksi'),
+    ('Loan_Size', 'Small (<$5rb) · Medium · Large · Very Large (>$35rb)',
+     'Bracket pinjaman konsumen, cap tanpa agunan ~$35rb'),
+    ('Rate_Category', 'Low (≤4%) · Moderate · High (>7%)',
+     'Tier prime / elevated / higher-priced'),
+    ('CC_Utilization_Category', 'Low (<30%) · Moderate · High · Over-Limit (>100%)',
+     'Pedoman credit-scoring FICO 30/70/100%'),
+]
+
+
 def _short(s):
     """'Loan Status=Closed' → 'Closed' untuk label node yang ringkas."""
     return str(s).split('=')[-1].strip()
@@ -374,6 +461,27 @@ def kpi_card(title, value, sub, color):
 # ════════════════════════════════════════════════════════════
 # APP
 # ════════════════════════════════════════════════════════════
+# Kredit: sumber data & tim penyusun (ditampilkan di section terakhir)
+REPO_URL = 'https://github.com/Vincentfernandes17/Data-Mining-Banking-Transaction'
+DATASET_URL = 'https://github.com/Vincentfernandes17/Data-Mining-Banking-Transaction/blob/main/data/Comprehensive_Banking_Database.csv'
+TEAM = [
+    ('Stephen Christopher', '2802540080', 'stephen.christopher@binus.ac.id',
+     'Insight Communicator'),
+    ('Vincent Fernandes', '2802538372', 'vincent.fernandes@binus.ac.id',
+     'Data Engineer'),
+    ('Crisvito', '2802540093', 'crisvito@binus.ac.id', 'Pattern Analyst'),
+    ('Hillary Violen Christalia Sanjaya', '2502538656',
+     'hillary.sanjaya@binus.ac.id', 'Segmentation Specialist'),
+    ('Aryaka Syahrezki', '2802540244', 'aryaka.syahrezki@binus.ac.id',
+     'Data Engineer'),
+]
+
+_TH = {'textAlign': 'left', 'padding': '6px 8px', 'background': '#eef1f5',
+       'borderBottom': '2px solid #dde3ea'}
+_TD = {'padding': '6px 8px', 'borderBottom': '1px solid #eef1f5',
+       'verticalAlign': 'top'}
+_TD_B = dict(_TD, fontWeight='600')
+
 SECTION_STYLE = {'background': 'white', 'borderRadius': '12px',
                  'boxShadow': '0 1px 4px rgba(0,0,0,0.08)',
                  'margin': '16px 20px', 'padding': '8px 4px 18px'}
@@ -420,6 +528,8 @@ def build_app():
 
     # Figur statis (tidak bergantung input) dibangun sekali.
     fig_feat = fig_feature_selection()
+    fig_skew = fig_raw_vs_ratio_skew(df)
+    fig_scaler = fig_prescaling_scaler_choice(df)
     fig_anom_break = fig_anomaly_breakdown(df)
     fig_anom_seg = fig_anomaly_by_segment(df)
 
@@ -441,9 +551,76 @@ def build_app():
         ], style={'display': 'flex', 'gap': '12px', 'padding': '16px 20px',
                   'flexWrap': 'wrap', 'background': '#eef1f5'}),
 
-        # ── SECTION 1: SEGMENTASI ──
+        # ── SECTION 1: DATA & PREPROCESSING ──
         html.Div([
-            _section_header('1', 'Segmentasi Nasabah',
+            _section_header('1', 'Data & Preprocessing',
+                            'Seperti apa datasetnya dan apa saja yang '
+                            'dikerjakan sebelum data layak ditambang'),
+            html.Div([
+                html.P([html.Strong('Dataset. '),
+                        'Comprehensive Banking Database berisi 5.000 nasabah '
+                        'dengan 40 kolom, mencakup profil demografis, saldo dan '
+                        'transaksi, pinjaman, kartu kredit, sampai umpan balik '
+                        'layanan. Datanya sudah bersih sejak awal, tidak ada '
+                        'nilai kosong dan tidak ada baris duplikat, sehingga '
+                        'pekerjaan berat justru ada di validasi dan rekayasa '
+                        'fitur, bukan pembersihan.']),
+                html.P([html.Strong('Validasi domain. '),
+                        'Sebanyak 1.703 baris terlihat tidak konsisten antara '
+                        'saldo akhir dan jenis transaksi, tetapi setelah diadu '
+                        'dengan label anomali bawaan proporsinya sama saja '
+                        'dengan baris yang konsisten, jadi baris tersebut tidak '
+                        'dibuang. Umur seluruhnya wajar di rentang 18 sampai 69 '
+                        'tahun dan suku bunga seluruhnya di rentang 1 sampai 10 '
+                        'persen. Ada 855 nasabah dengan saldo kartu melebihi '
+                        'limit, ini dipertahankan karena justru menjadi sinyal '
+                        'tekanan kredit yang diselidiki di Phase 4.']),
+                html.P([html.Strong('Rekayasa fitur. '),
+                        'Delapan kolom tanggal diringkas menjadi dua fitur '
+                        'temporal, lalu dibuat tiga rasio perilaku yaitu '
+                        'utilisasi kartu, transaksi terhadap saldo, dan '
+                        'pinjaman terhadap saldo. Sepuluh kolom identitas dan '
+                        'kunci buatan dibuang karena berisiko privasi dan tanpa '
+                        'makna, ditambah delapan kolom tanggal mentah yang '
+                        'sudah terwakili fitur temporal, total 18 kolom '
+                        'dilepas.']),
+                html.P([html.Strong('Kenapa rasio, bukan angka mentah? '),
+                        'Grafik pertama di bawah menjawabnya. Hampir semua '
+                        'fitur mentah nyaris uniform dengan skewness mendekati '
+                        'nol, artinya tidak ada gumpalan alami yang bisa '
+                        'dijadikan cluster. Begitu dua fitur uniform dibagi, '
+                        'hasilnya berekor panjang dan berstruktur, dan di '
+                        'situlah segmen nasabah baru terlihat.']),
+            ], style={'padding': '4px 24px 6px', 'color': '#333',
+                      'fontSize': '14px', 'lineHeight': '1.65',
+                      'textAlign': 'justify'}),
+            html.Div([
+                dcc.Graph(id='pp-skew', figure=fig_skew, style={'flex': '1'}),
+                dcc.Graph(id='pp-scaler', figure=fig_scaler, style={'flex': '1'}),
+            ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px',
+                      'flexWrap': 'wrap'}),
+            html.Div([
+                html.P([html.Strong('Diskretisasi untuk Association Rules. '),
+                        'Enam fitur kontinu diubah menjadi kategori memakai '
+                        'ambang domain tetap, bukan kuantil, supaya kategorinya '
+                        'punya arti yang sama walau datanya berganti.'],
+                       style={'marginBottom': '6px'}),
+                html.Table(
+                    [html.Tr([html.Th('Kolom kategori', style=_TH),
+                              html.Th('Kategori', style=_TH),
+                              html.Th('Dasar ambang', style=_TH)])] +
+                    [html.Tr([html.Td(k, style=_TD_B), html.Td(v, style=_TD),
+                              html.Td(w, style=_TD)])
+                     for k, v, w in BINNING_ROWS],
+                    style={'width': '100%', 'borderCollapse': 'collapse',
+                           'fontSize': '12.5px'}),
+            ], style={'padding': '10px 24px 4px', 'color': '#333',
+                      'fontSize': '14px', 'lineHeight': '1.6'}),
+        ], style=SECTION_STYLE),
+
+        # ── SECTION 2: SEGMENTASI ──
+        html.Div([
+            _section_header('2', 'Segmentasi Nasabah',
                             'Peta segmen, proporsi, profil rasio, dan komposisi '
                             'demografis per segmen'),
             html.Div([
@@ -470,6 +647,13 @@ def build_app():
                                  value=RATIOS[2], clearable=False),
                 ], style={'flex': '1'}),
             ], style={'display': 'flex', 'gap': '12px', 'padding': '10px 20px'}),
+            html.Div('Sumbu X dan Y hanya mengubah peta segmen di kiri. Donut '
+                     'proporsi, profil rasio, dan komposisi demografis '
+                     'mengikuti pilihan METODE, karena keanggotaan segmen tiap '
+                     'nasabah tidak berubah hanya karena sudut pandangnya '
+                     'digeser.',
+                     style={'padding': '0 24px 6px', 'color': '#666',
+                            'fontSize': '12.5px', 'fontStyle': 'italic'}),
             html.Div([
                 dcc.Graph(id='cluster-map', style={'flex': '3'}),
                 dcc.Graph(id='segment-pie', style={'flex': '2'}),
@@ -495,9 +679,9 @@ def build_app():
                       style={'padding': '0 16px 6px'}),
         ], style=SECTION_STYLE),
 
-        # ── SECTION 2: ASSOCIATION RULES ──
+        # ── SECTION 3: ASSOCIATION RULES ──
         html.Div([
-            _section_header('2', 'Association Rules',
+            _section_header('3', 'Association Rules',
                             'Jaringan relasi BERARAH (panah IF → THEN), sebaran '
                             'support–confidence, dan tabel rule'),
             html.Div([
@@ -514,9 +698,9 @@ def build_app():
             html.Div(id='rule-table', style={'padding': '12px 20px'}),
         ], style=SECTION_STYLE),
 
-        # ── SECTION 3: ANOMALI ──
+        # ── SECTION 4: ANOMALI ──
         html.Div([
-            _section_header('3', 'Anomaly Detection',
+            _section_header('4', 'Anomaly Detection',
                             'Klasifikasi anomali, konsentrasi risiko per segmen, '
                             'dan sebarannya di ruang rasio perilaku'),
             html.Div([
@@ -543,35 +727,34 @@ def build_app():
             dcc.Graph(id='anom-scatter', style={'padding': '0 16px'}),
         ], style=SECTION_STYLE),
 
-        # ── SECTION 4: KREDIT ──
+        # ── SECTION 5: KREDIT ──
         html.Div([
-            _section_header('4', 'Kredit',
+            _section_header('5', 'Kredit',
                             'Sumber data dan tim penyusun'),
             html.Div([
                 html.P([html.Strong('Dataset: '),
                         'Comprehensive Banking Database — ',
                         html.A('sumber dataset di GitHub',
-                               href='https://github.com/USERNAME/REPO-DATASET',
-                               target='_blank'),
-                        '  (placeholder, ganti dengan tautan asli)']),
+                               href=DATASET_URL, target='_blank'),
+                        '  (ganti dengan tautan asli bila berbeda)']),
                 html.P([html.Strong('Repositori proyek: '),
-                        html.A('github.com/USERNAME/REPO-PROYEK',
-                               href='https://github.com/USERNAME/REPO-PROYEK',
-                               target='_blank'),
-                        '  (placeholder, ganti dengan tautan asli)']),
-                html.P(html.Strong('Tim — Kelompok (5 anggota):'),
+                        html.A('Vincentfernandes17/Data-Mining-Banking-Transaction',
+                               href=REPO_URL, target='_blank')]),
+                html.P(html.Strong('Tim — Kelompok 6:'),
                        style={'marginBottom': '4px'}),
-                html.Ul([
-                    html.Li('Nama Anggota 1 — Data Engineer'),
-                    html.Li('Nama Anggota 2 — Data Engineer'),
-                    html.Li('Nama Anggota 3 — Pattern Analyst'),
-                    html.Li('Nama Anggota 4 — Segmentation Specialist'),
-                    html.Li('Nama Anggota 5 — Insight Communicator'),
-                ], style={'marginTop': '0'}),
-                html.Div('Placeholder nama di atas silakan diganti dengan nama '
-                         'asli masing-masing anggota.',
-                         style={'color': '#888', 'fontSize': '12px',
-                                'fontStyle': 'italic'}),
+                html.Table(
+                    [html.Tr([html.Th('Nama', style=_TH),
+                              html.Th('NIM', style=_TH),
+                              html.Th('Email', style=_TH),
+                              html.Th('Role', style=_TH)])] +
+                    [html.Tr([html.Td(nama, style=_TD_B),
+                              html.Td(nim, style=_TD),
+                              html.Td(html.A(email, href=f'mailto:{email}'),
+                                      style=_TD),
+                              html.Td(role, style=_TD)])
+                     for nama, nim, email, role in TEAM],
+                    style={'width': '100%', 'borderCollapse': 'collapse',
+                           'fontSize': '13px', 'marginTop': '4px'}),
             ], style={'padding': '4px 24px 16px', 'color': '#333',
                       'fontSize': '14px', 'lineHeight': '1.6'}),
         ], style=SECTION_STYLE),
