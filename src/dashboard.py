@@ -118,14 +118,24 @@ def fig_cluster_map(df, method, x, y):
 
 
 def fig_segment_sizes(df, method):
-    """Donut chart proporsi nasabah per segmen untuk metode terpilih."""
-    counts = df[method].value_counts().reset_index()
-    counts.columns = ['Segment', 'Jumlah']
-    color_map = SEGMENT_COLORS if method == 'KMeans_Segment' else None
-    fig = px.pie(counts, names='Segment', values='Jumlah', hole=0.45,
-                 color='Segment', color_discrete_map=color_map,
-                 title='Proporsi Nasabah per Segmen')
-    fig.update_layout(height=480, margin=dict(l=10, r=10, t=50, b=10))
+    """Donut chart proporsi nasabah per segmen untuk metode terpilih.
+
+    Sengaja memakai go.Pie dengan list Python biasa (bukan DataFrame/np.array)
+    agar nilai TIDAK diserialisasi sebagai typed-array biner (bdata). Serialisasi
+    biner membuat Plotly.js kadang gagal mendeteksi perubahan saat jumlah irisan
+    tetap sama sehingga donut tidak ikut ter-repaint ketika metode diganti. Nama
+    metode juga dimasukkan ke judul supaya layout selalu berubah (pasti repaint)
+    dan pengguna tahu donut ini mengikuti pilihan METODE, bukan sumbu X/Y."""
+    counts = df[method].value_counts()
+    labels = [str(x) for x in counts.index.tolist()]
+    values = [int(v) for v in counts.values.tolist()]
+    colors = ([SEGMENT_COLORS.get(l) for l in labels]
+              if method == 'KMeans_Segment' else None)
+    fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.45, sort=False,
+                           marker=dict(colors=colors) if colors else None))
+    fig.update_layout(
+        title=f'Proporsi Nasabah per Segmen — {METHOD_LABEL.get(method, method)}',
+        height=480, margin=dict(l=10, r=10, t=50, b=10))
     return fig
 
 
@@ -138,7 +148,8 @@ def fig_segment_profile(df, method):
     color_map = SEGMENT_COLORS if method == 'KMeans_Segment' else None
     fig = px.bar(long, x='Rasio', y='Median', color=method, barmode='group',
                  color_discrete_map=color_map, log_y=True,
-                 title='Profil Rasio Perilaku per Segmen (median, skala log)')
+                 title=f'Profil Rasio Perilaku per Segmen (median, skala log) — '
+                       f'{METHOD_LABEL.get(method, method)}')
     fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10),
                       legend_title_text='Segmen')
     return fig
@@ -415,10 +426,7 @@ def build_app():
     app.layout = html.Div([
         html.Div([
             html.H2('🏦 Banking Transaction — Knowledge Discovery Dashboard',
-                    style={'margin': '0'}),
-            html.Div('Group 6 · KDD 5-Fase · Segmentasi · Association Rules · '
-                     'Anomaly Detection · satu halaman',
-                     style={'color': '#cdd7e5', 'fontSize': '13px'}),
+                    style={'margin': '0'})
         ], style={'padding': '14px 20px', 'background': '#1f3a5f',
                   'color': 'white', 'position': 'sticky', 'top': '0',
                   'zIndex': '100'}),
@@ -535,7 +543,40 @@ def build_app():
             dcc.Graph(id='anom-scatter', style={'padding': '0 16px'}),
         ], style=SECTION_STYLE),
 
-        html.Div('Dibuat dengan Python Dash · data: Phase 1–4 pipeline',
+        # ── SECTION 4: KREDIT ──
+        html.Div([
+            _section_header('4', 'Kredit',
+                            'Sumber data dan tim penyusun'),
+            html.Div([
+                html.P([html.Strong('Dataset: '),
+                        'Comprehensive Banking Database — ',
+                        html.A('sumber dataset di GitHub',
+                               href='https://github.com/USERNAME/REPO-DATASET',
+                               target='_blank'),
+                        '  (placeholder, ganti dengan tautan asli)']),
+                html.P([html.Strong('Repositori proyek: '),
+                        html.A('github.com/USERNAME/REPO-PROYEK',
+                               href='https://github.com/USERNAME/REPO-PROYEK',
+                               target='_blank'),
+                        '  (placeholder, ganti dengan tautan asli)']),
+                html.P(html.Strong('Tim — Kelompok (5 anggota):'),
+                       style={'marginBottom': '4px'}),
+                html.Ul([
+                    html.Li('Nama Anggota 1 — Data Engineer'),
+                    html.Li('Nama Anggota 2 — Data Engineer'),
+                    html.Li('Nama Anggota 3 — Pattern Analyst'),
+                    html.Li('Nama Anggota 4 — Segmentation Specialist'),
+                    html.Li('Nama Anggota 5 — Insight Communicator'),
+                ], style={'marginTop': '0'}),
+                html.Div('Placeholder nama di atas silakan diganti dengan nama '
+                         'asli masing-masing anggota.',
+                         style={'color': '#888', 'fontSize': '12px',
+                                'fontStyle': 'italic'}),
+            ], style={'padding': '4px 24px 16px', 'color': '#333',
+                      'fontSize': '14px', 'lineHeight': '1.6'}),
+        ], style=SECTION_STYLE),
+
+        html.Div('Banking Transaction · Knowledge Discovery · Python Dash',
                  style={'textAlign': 'center', 'color': '#999',
                         'fontSize': '11px', 'padding': '12px'}),
     ], style={'fontFamily': 'Segoe UI, sans-serif', 'background': '#f7f9fb'})
