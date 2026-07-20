@@ -463,7 +463,7 @@ def kpi_card(title, value, sub, color):
 # ════════════════════════════════════════════════════════════
 # Kredit: sumber data & tim penyusun (ditampilkan di section terakhir)
 REPO_URL = 'https://github.com/Vincentfernandes17/Data-Mining-Banking-Transaction'
-DATASET_URL = 'https://github.com/Vincentfernandes17/Data-Mining-Banking-Transaction/blob/main/data/Comprehensive_Banking_Database.csv'
+DATASET_URL = 'https://github.com/ahsan084/Banking-Dataset'
 TEAM = [
     ('Stephen Christopher', '2802540080', 'stephen.christopher@binus.ac.id',
      'Insight Communicator'),
@@ -475,6 +475,9 @@ TEAM = [
     ('Aryaka Syahrezki', '2802540244', 'aryaka.syahrezki@binus.ac.id',
      'Data Engineer'),
 ]
+
+# Tautan tampil sebagai teks singkat (URL panjang disembunyikan di balik href)
+_LINK = {'color': '#1f3a5f', 'fontWeight': '600', 'textDecoration': 'underline'}
 
 _TH = {'textAlign': 'left', 'padding': '6px 8px', 'background': '#eef1f5',
        'borderBottom': '2px solid #dde3ea'}
@@ -734,13 +737,14 @@ def build_app():
             html.Div([
                 html.P([html.Strong('Dataset: '),
                         'Comprehensive Banking Database — ',
-                        html.A('sumber dataset di GitHub',
-                               href=DATASET_URL, target='_blank'),
-                        '  (ganti dengan tautan asli bila berbeda)']),
+                        html.A('lihat sumber dataset', href=DATASET_URL,
+                               target='_blank', rel='noopener',
+                               style=_LINK)]),
                 html.P([html.Strong('Repositori proyek: '),
-                        html.A('Vincentfernandes17/Data-Mining-Banking-Transaction',
-                               href=REPO_URL, target='_blank')]),
-                html.P(html.Strong('Tim — Kelompok 6:'),
+                        html.A('buka repositori', href=REPO_URL,
+                               target='_blank', rel='noopener',
+                               style=_LINK)]),
+                html.P(html.Strong('Kelompok 6:'),
                        style={'marginBottom': '4px'}),
                 html.Table(
                     [html.Tr([html.Th('Nama', style=_TH),
