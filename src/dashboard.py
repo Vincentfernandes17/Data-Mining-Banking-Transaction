@@ -382,7 +382,7 @@ def build_rule_graph(rules):
     return G, pos
 
 
-def fig_rule_network(G, pos, min_lift, max_arrows=140):
+def fig_rule_network(G, pos, min_lift, n_rules=None, max_arrows=140):
     """Jaringan association rules BERARAH. Panah menunjuk dari kondisi (IF)
     ke hasil (THEN), difilter lift ≥ slider. Panah digambar sebagai anotasi
     dengan arrowhead sehingga arah relasi jelas terbaca. Ukuran & warna node
@@ -441,11 +441,19 @@ def fig_rule_network(G, pos, min_lift, max_arrows=140):
     ys = [pos[n][1] for n in nodes]
     padx = (max(xs) - min(xs)) * 0.25 + 0.15
     pady = (max(ys) - min(ys)) * 0.20 + 0.15
-    capped = '' if len(kept) <= max_arrows else f' (panah dibatasi {max_arrows} lift tertinggi)'
+    capped = ('' if len(kept) <= max_arrows
+              else f', {max_arrows} lift tertinggi digambar')
+    # Satu rule bisa melahirkan BANYAK panah: tiap item di sisi IF ditarik ke
+    # tiap item di sisi THEN. Rule dengan 4 item IF jadi 4 panah. Karena itu
+    # jumlah panah selalu lebih besar dari jumlah rule, dan keduanya
+    # disebutkan sekaligus supaya tidak dikira angkanya bertentangan dengan
+    # KPI 'Association Rules' di atas halaman.
+    asal = f'{n_rules} rule → ' if n_rules is not None else ''
     fig = go.Figure([node_trace])
     fig.update_layout(
-        title=f'Jaringan Association Rules BERARAH (Lift ≥ {min_lift:.2f}) — '
-              f'{len(kept)} relasi{capped}. Panah IF → THEN.',
+        title=f'Jaringan Association Rules BERARAH — Lift ≥ {min_lift:.2f}<br>'
+              f'<sub>{asal}{len(kept)} panah antar item{capped}. '
+              f'Panah menunjuk IF → THEN.</sub>',
         showlegend=False, height=600, annotations=annotations,
         xaxis=dict(visible=False, range=[min(xs) - padx, max(xs) + padx]),
         yaxis=dict(visible=False, range=[min(ys) - pady, max(ys) + pady]),
@@ -892,7 +900,7 @@ def build_app():
             style_header={'fontWeight': 'bold', 'background': '#eef1f5'},
             page_size=10, sort_action='native')
         # Pakai graph + layout yang sudah di-precompute → callback ringan.
-        return (fig_rule_network(rule_graph, rule_pos, min_lift),
+        return (fig_rule_network(rule_graph, rule_pos, min_lift, len(sub)),
                 fig_rule_scatter(rules, min_lift), table)
 
     @app.callback(
