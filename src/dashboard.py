@@ -736,7 +736,7 @@ def build_app():
                             'Sumber data dan tim penyusun'),
             html.Div([
                 html.P([html.Strong('Dataset: '),
-                        'Comprehensive Banking Database — ',
+                        'Banking Dataset — ',
                         html.A('lihat sumber dataset', href=DATASET_URL,
                                target='_blank', rel='noopener',
                                style=_LINK)]),
