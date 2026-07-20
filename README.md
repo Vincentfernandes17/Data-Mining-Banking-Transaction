@@ -123,7 +123,7 @@ Phase 2 butuh output Phase 1, Phase 4 butuh output Phase 2.
 
 ---
 
-## Catatan Kejujuran Metodologis
+## Catatan Dataset
 
 Karena dataset bersifat sintetis dengan atribut yang sebagian besar independen:
 
