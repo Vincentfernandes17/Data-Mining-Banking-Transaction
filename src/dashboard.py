@@ -268,6 +268,11 @@ def _lollipop(stats, value_col, group_col, color_map, fmt, title, xtitle,
                                              line=dict(width=1, color='white')),
             text=[fmt.format(v) for v in part[value_col]],
             textposition='middle right', textfont=dict(size=11),
+            # Label teks dihitung dalam piksel, bukan satuan sumbu, sehingga
+            # pada kontainer sempit ia bisa melewati tepi plot walau rentang
+            # sumbunya sudah dilebihkan. cliponaxis=False membuatnya tetap
+            # tergambar (ruangnya disediakan lewat margin kanan).
+            cliponaxis=False,
             hovertemplate='%{y}<br>' + fmt.format(0).replace('0', '%{x}') +
                           '<extra></extra>'))
     fig.add_vline(x=threshold, line_dash='dot', line_color='#7f8c8d',
@@ -284,7 +289,7 @@ def _lollipop(stats, value_col, group_col, color_map, fmt, title, xtitle,
         legend=dict(orientation='h', yanchor='bottom', y=1.02,
                     xanchor='left', x=0, itemclick=False,
                     itemdoubleclick=False),
-        margin=dict(l=10, r=20, t=90, b=40))
+        margin=dict(l=10, r=64, t=90, b=40))
     return fig
 
 
