@@ -368,10 +368,16 @@ def detect_outliers_prescaling(data_clean, save_plots=True):
     MinMaxScaler. Mengembalikan (robust_cols, minmax_cols) + boxplot berwarna
     sesuai rekomendasi.
     """
+    # Ketiga rasio perilaku WAJIB ada di sini karena merupakan fitur input
+    # clustering Phase 2. Loan_to_Balance_Ratio sempat terlewat padahal paling
+    # miring (skew ~6,8 dengan ~11% outlier), sehingga scaler-nya tidak pernah
+    # ditentukan. Credit Limit juga ditambahkan agar seluruh fitur finansial
+    # yang dipakai di fase berikutnya ikut dievaluasi.
     numeric_cols = [c for c in [
         'Account Balance', 'Transaction Amount', 'Loan Amount',
-        'Credit Card Balance', 'Rewards Points',
+        'Credit Limit', 'Credit Card Balance', 'Rewards Points',
         'CC_Utilization', 'Transaction_to_Balance_Ratio',
+        'Loan_to_Balance_Ratio',
         'Age', 'Interest Rate', 'Loan Term', 'Account_Age_Years',
         'Days_Since_Last_Transaction'
     ] if c in data_clean.columns]
