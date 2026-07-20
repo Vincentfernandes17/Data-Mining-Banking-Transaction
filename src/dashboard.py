@@ -133,9 +133,15 @@ def fig_segment_sizes(df, method):
               if method == 'KMeans_Segment' else None)
     fig = go.Figure(go.Pie(labels=labels, values=values, hole=0.45, sort=False,
                            marker=dict(colors=colors) if colors else None))
+    # Nama metode ditaruh di baris kedua sebagai subjudul: kalau digabung satu
+    # baris, judulnya lebih panjang dari kolom donut yang cuma 2/5 lebar dan
+    # ujungnya terpotong. Metode tetap ikut di judul supaya layout berubah
+    # setiap pilihan berganti (memaksa Plotly menggambar ulang donutnya).
     fig.update_layout(
-        title=f'Proporsi Nasabah per Segmen — {METHOD_LABEL.get(method, method)}',
-        height=480, margin=dict(l=10, r=10, t=50, b=10))
+        title=dict(text=f'Proporsi Nasabah per Segmen<br>'
+                        f'<sub>{METHOD_LABEL.get(method, method)}</sub>',
+                   font=dict(size=16)),
+        height=480, margin=dict(l=10, r=10, t=64, b=10))
     return fig
 
 
