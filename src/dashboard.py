@@ -235,11 +235,56 @@ def _preprocessing_stats(df):
     return pd.DataFrame(rows).sort_values('Skew')
 
 
-def _bar_room(fig, values, pad=0.22):
-    """Beri ruang kosong di kanan sumbu-x supaya label angka di ujung batang
-    tidak terpotong tepi grafik (masalah klasik textposition='outside')."""
-    top = max(values) if len(values) else 1.0
-    fig.update_xaxes(range=[0, top * (1 + pad)])
+def _lollipop(stats, value_col, group_col, color_map, fmt, title, xtitle,
+              threshold, threshold_label):
+    """Dot plot (lollipop) horizontal: tangkai tipis dari nol plus satu titik
+    di nilainya.
+
+    Sengaja BUKAN bar chart. Di data ini sepuluh dari tiga belas fitur bernilai
+    nol atau nyaris nol, sehingga batangnya menjadi selebar nol piksel alias
+    tidak terlihat sama sekali, padahal kelompoknya tetap muncul di legenda —
+    pembaca wajar menyangka grafiknya rusak. Titik tetap tergambar berapa pun
+    nilainya, jadi setiap fitur selalu punya tanda yang terlihat dan legenda
+    selalu cocok dengan apa yang ada di layar.
+
+    Klik legenda juga dimatikan karena dengan hanya dua kelompok, menyembunyikan
+    salah satunya membuat separuh fitur lenyap dari sumbu dan justru
+    menyesatkan saat dipresentasikan."""
+    order = list(stats['Fitur'])
+    top = float(stats[value_col].max()) if len(stats) else 1.0
+    fig = go.Figure()
+    for name, part in stats.groupby(group_col, sort=False):
+        color = color_map[name]
+        # Tangkai digambar sebagai garis terpisah per fitur supaya titik nol
+        # tetap punya konteks visual tanpa memalsukan panjang batang.
+        for _, row in part.iterrows():
+            fig.add_shape(type='line', x0=0, x1=row[value_col],
+                          y0=row['Fitur'], y1=row['Fitur'],
+                          line=dict(color=color, width=3), opacity=0.45,
+                          layer='below')
+        fig.add_trace(go.Scatter(
+            x=part[value_col], y=part['Fitur'], name=name,
+            mode='markers+text', marker=dict(size=12, color=color,
+                                             line=dict(width=1, color='white')),
+            text=[fmt.format(v) for v in part[value_col]],
+            textposition='middle right', textfont=dict(size=11),
+            hovertemplate='%{y}<br>' + fmt.format(0).replace('0', '%{x}') +
+                          '<extra></extra>'))
+    fig.add_vline(x=threshold, line_dash='dot', line_color='#7f8c8d',
+                  annotation_text=threshold_label,
+                  annotation_position='bottom right', annotation_font_size=10)
+    fig.update_yaxes(categoryorder='array', categoryarray=order,
+                     title='', showgrid=True, gridcolor='#eef1f5')
+    # Ruang di kiri agar titik nol tidak menempel sumbu, dan di kanan agar
+    # label angkanya tidak terpotong tepi grafik.
+    fig.update_xaxes(range=[-top * 0.04, top * 1.28], title=xtitle,
+                     zeroline=True, zerolinecolor='#dde3ea')
+    fig.update_layout(
+        title=title, height=470, plot_bgcolor='white',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02,
+                    xanchor='left', x=0, itemclick=False,
+                    itemdoubleclick=False),
+        margin=dict(l=10, r=20, t=90, b=40))
     return fig
 
 
@@ -251,23 +296,13 @@ def fig_raw_vs_ratio_skew(stats):
     distribusi berekor panjang yang bisa disegmentasi. Garis putus-putus di
     |skew| = 1 adalah ambang yang dipakai Phase 1 untuk menyebut sebuah
     distribusi miring."""
-    fig = px.bar(stats, x='Skew', y='Fitur', orientation='h', color='Kelompok',
-                 color_discrete_map={'Fitur mentah': '#bdc3c7',
-                                     'Rasio hasil rekayasa': '#2ecc71'},
-                 text=[f'{v:.2f}' for v in stats['Skew']],
-                 title='Fitur mentah nyaris uniform, rasio justru berstruktur')
-    fig.update_traces(textposition='outside', cliponaxis=False,
-                      textfont_size=11)
-    fig.add_vline(x=SKEW_THRESHOLD, line_dash='dot', line_color='#7f8c8d',
-                  annotation_text='ambang miring |skew| = 1',
-                  annotation_position='bottom right', annotation_font_size=10)
-    fig.update_layout(
-        height=470, xaxis_title='|Skewness|   (0 = rata, tidak ada struktur)',
-        yaxis_title='', legend_title_text='',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02,
-                    xanchor='left', x=0),
-        margin=dict(l=10, r=20, t=90, b=40))
-    return _bar_room(fig, stats['Skew'])
+    return _lollipop(
+        stats, 'Skew', 'Kelompok',
+        {'Fitur mentah': '#95a5a6', 'Rasio hasil rekayasa': '#2ecc71'},
+        '{:.2f}',
+        'Fitur mentah nyaris uniform, rasio justru berstruktur',
+        '|Skewness|   (0 = rata, tidak ada struktur)',
+        SKEW_THRESHOLD, 'ambang miring |skew| = 1')
 
 
 def fig_prescaling_scaler_choice(stats):
@@ -278,23 +313,13 @@ def fig_prescaling_scaler_choice(stats):
     fitur — RobustScaler (median/IQR, kebal outlier) bila outlier >5% atau
     |skew|>1, selain itu MinMaxScaler. Urutan barisnya sama dengan figur
     skewness di sebelahnya agar keduanya bisa dibaca berdampingan."""
-    fig = px.bar(stats, x='Persen', y='Fitur', orientation='h', color='Scaler',
-                 color_discrete_map={'RobustScaler': '#e74c3c',
-                                     'MinMaxScaler': '#2ecc71'},
-                 text=[f'{v:.1f}%' for v in stats['Persen']],
-                 title='Outlier IQR menentukan scaler tiap fitur')
-    fig.update_traces(textposition='outside', cliponaxis=False,
-                      textfont_size=11)
-    fig.add_vline(x=OUTLIER_THRESHOLD, line_dash='dot', line_color='#7f8c8d',
-                  annotation_text='ambang 5%',
-                  annotation_position='bottom right', annotation_font_size=10)
-    fig.update_layout(
-        height=470, xaxis_title='% baris di luar pagar IQR',
-        yaxis_title='', legend_title_text='',
-        legend=dict(orientation='h', yanchor='bottom', y=1.02,
-                    xanchor='left', x=0),
-        margin=dict(l=10, r=20, t=90, b=40))
-    return _bar_room(fig, stats['Persen'])
+    return _lollipop(
+        stats, 'Persen', 'Scaler',
+        {'RobustScaler': '#e74c3c', 'MinMaxScaler': '#2ecc71'},
+        '{:.1f}%',
+        'Outlier IQR menentukan scaler tiap fitur',
+        '% baris di luar pagar IQR',
+        OUTLIER_THRESHOLD, 'ambang 5%')
 
 
 # Ambang binning domain-tetap (dipakai Phase 3 / Apriori) + alasannya.
@@ -664,10 +689,12 @@ def build_app():
                           className='chart-half', responsive=True),
             ], className='chart-row'),
             html.Div('Kedua grafik memakai urutan fitur yang sama, jadi bisa '
-                     'dibaca berdampingan baris per baris. Sepuluh fitur mentah '
-                     'di bagian bawah tidak punya satu pun outlier IQR, batang '
-                     'nol persennya memang tidak terlihat, dan semuanya cukup '
-                     'memakai MinMaxScaler.', className='note'),
+                     'dibaca berdampingan baris per baris. Titik yang menempel '
+                     'di angka nol bukan grafik yang gagal tampil, melainkan '
+                     'memang nilainya nol: sepuluh fitur mentah di bagian bawah '
+                     'tidak punya satu pun outlier IQR dan skewness-nya di '
+                     'bawah 0,05, sehingga semuanya cukup memakai MinMaxScaler.',
+                     className='note'),
             html.Div([
                 html.P([html.Strong('Diskretisasi untuk Association Rules. '),
                         'Enam fitur kontinu diubah menjadi kategori memakai '
