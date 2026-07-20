@@ -195,72 +195,106 @@ def fig_feature_selection():
 
 # ── Phase 1: Preprocessing (figur dihitung ulang dari data, bukan angka hafalan)
 # Fitur mentah yang tersedia di dataset_final untuk perbandingan struktur.
+# Loan Term & Minimum Payment Due ikut dievaluasi di preprocess.py tetapi tidak
+# terbawa ke dataset_final (dibuang saat feature selection), jadi tidak muncul.
 RAW_NUMERIC = ['Age', 'Account Balance', 'Transaction Amount', 'Loan Amount',
                'Credit Limit', 'Credit Card Balance', 'Rewards Points',
                'Interest Rate', 'Account_Age_Years',
                'Days_Since_Last_Transaction']
+# Ambang keputusan (identik dengan detect_outliers_prescaling di preprocess.py)
+SKEW_THRESHOLD = 1.0     # |skew| > 1 → distribusi miring
+OUTLIER_THRESHOLD = 5.0  # outlier IQR > 5% → butuh scaler kebal outlier
 
 
-def fig_raw_vs_ratio_skew(df):
+def _preprocessing_stats(df):
+    """Hitung |skew| dan persentase outlier IQR tiap fitur SATU KALI, lalu
+    tentukan scaler yang dipilih dengan aturan yang sama seperti Phase 1.
+
+    Dipakai bersama oleh kedua figur preprocessing supaya urutan barisnya
+    identik kiri dan kanan, sehingga penonton bisa membaca keduanya sebagai
+    satu tabel: fitur yang miring di kiri adalah fitur yang ber-outlier di
+    kanan. Diurutkan menaik agar |skew| terbesar tampil di baris teratas."""
+    rows = []
+    for col in RAW_NUMERIC + RATIOS:
+        if col not in df.columns:
+            continue
+        s = df[col]
+        q1, q3 = s.quantile(0.25), s.quantile(0.75)
+        iqr = q3 - q1
+        pct = float(((s < q1 - 1.5 * iqr) | (s > q3 + 1.5 * iqr)).mean() * 100)
+        skew = abs(float(s.skew()))
+        rows.append({
+            'Fitur': RATIO_LABEL.get(col, col),
+            'Skew': skew,
+            'Persen': pct,
+            'Kelompok': 'Rasio hasil rekayasa' if col in RATIOS else 'Fitur mentah',
+            'Scaler': ('RobustScaler'
+                       if (pct > OUTLIER_THRESHOLD or skew > SKEW_THRESHOLD)
+                       else 'MinMaxScaler'),
+        })
+    return pd.DataFrame(rows).sort_values('Skew')
+
+
+def _bar_room(fig, values, pad=0.22):
+    """Beri ruang kosong di kanan sumbu-x supaya label angka di ujung batang
+    tidak terpotong tepi grafik (masalah klasik textposition='outside')."""
+    top = max(values) if len(values) else 1.0
+    fig.update_xaxes(range=[0, top * (1 + pad)])
+    return fig
+
+
+def fig_raw_vs_ratio_skew(stats):
     """Inti keputusan Phase 1: kenapa clustering TIDAK memakai fitur mentah.
 
-    Skewness |skew| tiap fitur mentah vs tiga rasio perilaku hasil rekayasa.
-    Fitur mentah nyaris uniform (|skew| ~ 0 = tidak ada struktur, tidak ada
-    cluster alami), sedangkan rasio antar dua fitur uniform justru melahirkan
-    distribusi berekor panjang (|skew| besar) yang bisa disegmentasi."""
-    rows = []
-    for c in RAW_NUMERIC:
-        if c in df.columns:
-            rows.append((c, abs(float(df[c].skew())), 'Fitur mentah'))
-    for c in RATIOS:
-        if c in df.columns:
-            rows.append((RATIO_LABEL.get(c, c), abs(float(df[c].skew())),
-                         'Rasio hasil rekayasa'))
-    sk = pd.DataFrame(rows, columns=['Fitur', 'Skew', 'Kelompok'])
-    sk = sk.sort_values('Skew')
-    fig = px.bar(sk, x='Skew', y='Fitur', orientation='h', color='Kelompok',
+    Fitur mentah nyaris uniform (|skew| ~ 0 = tidak ada gumpalan, tidak ada
+    cluster alami), sedangkan rasio antar dua fitur uniform melahirkan
+    distribusi berekor panjang yang bisa disegmentasi. Garis putus-putus di
+    |skew| = 1 adalah ambang yang dipakai Phase 1 untuk menyebut sebuah
+    distribusi miring."""
+    fig = px.bar(stats, x='Skew', y='Fitur', orientation='h', color='Kelompok',
                  color_discrete_map={'Fitur mentah': '#bdc3c7',
                                      'Rasio hasil rekayasa': '#2ecc71'},
-                 text=[f'{v:.2f}' for v in sk['Skew']],
-                 title='Kenapa clustering memakai RASIO, bukan fitur mentah '
-                       '— |skewness| per fitur')
-    fig.update_traces(textposition='outside', cliponaxis=False)
-    fig.update_layout(height=460, xaxis_title='|Skewness| (0 = uniform, '
-                                              'tidak ada struktur)',
-                      yaxis_title='', legend_title_text='',
-                      margin=dict(l=10, r=40, t=60, b=10))
-    return fig
+                 text=[f'{v:.2f}' for v in stats['Skew']],
+                 title='Fitur mentah nyaris uniform, rasio justru berstruktur')
+    fig.update_traces(textposition='outside', cliponaxis=False,
+                      textfont_size=11)
+    fig.add_vline(x=SKEW_THRESHOLD, line_dash='dot', line_color='#7f8c8d',
+                  annotation_text='ambang miring |skew| = 1',
+                  annotation_position='bottom right', annotation_font_size=10)
+    fig.update_layout(
+        height=470, xaxis_title='|Skewness|   (0 = rata, tidak ada struktur)',
+        yaxis_title='', legend_title_text='',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02,
+                    xanchor='left', x=0),
+        margin=dict(l=10, r=20, t=90, b=40))
+    return _bar_room(fig, stats['Skew'])
 
 
-def fig_prescaling_scaler_choice(df):
+def fig_prescaling_scaler_choice(stats):
     """Deteksi outlier pra-scaling (IQR) yang menentukan pilihan scaler.
 
-    Outlier sengaja TIDAK dihapus (bisa jadi sinyal nyata yang diselidiki di
-    Phase 4); persentasenya dipakai memilih scaler per fitur — RobustScaler
-    (median/IQR, kebal outlier) bila outlier >5% atau |skew|>1, selain itu
-    MinMaxScaler. Logika di sini sama persis dengan preprocess.py."""
-    rows = []
-    for c in RAW_NUMERIC + RATIOS:
-        if c not in df.columns:
-            continue
-        q1, q3 = df[c].quantile(0.25), df[c].quantile(0.75)
-        iqr = q3 - q1
-        pct = float(((df[c] < q1 - 1.5 * iqr) | (df[c] > q3 + 1.5 * iqr)).mean() * 100)
-        skew = abs(float(df[c].skew()))
-        scaler = 'RobustScaler' if (pct > 5 or skew > 1) else 'MinMaxScaler'
-        rows.append((RATIO_LABEL.get(c, c), pct, scaler))
-    out = pd.DataFrame(rows, columns=['Fitur', 'Persen', 'Scaler'])
-    out = out.sort_values('Persen')
-    fig = px.bar(out, x='Persen', y='Fitur', orientation='h', color='Scaler',
+    Outlier sengaja TIDAK dihapus karena bisa jadi sinyal nyata yang
+    diselidiki di Phase 4; persentasenya hanya dipakai memilih scaler per
+    fitur — RobustScaler (median/IQR, kebal outlier) bila outlier >5% atau
+    |skew|>1, selain itu MinMaxScaler. Urutan barisnya sama dengan figur
+    skewness di sebelahnya agar keduanya bisa dibaca berdampingan."""
+    fig = px.bar(stats, x='Persen', y='Fitur', orientation='h', color='Scaler',
                  color_discrete_map={'RobustScaler': '#e74c3c',
                                      'MinMaxScaler': '#2ecc71'},
-                 text=[f'{v:.1f}%' for v in out['Persen']],
-                 title='Outlier pra-scaling (IQR) menentukan scaler per fitur')
-    fig.update_traces(textposition='outside', cliponaxis=False)
-    fig.update_layout(height=460, xaxis_title='% baris di luar pagar IQR',
-                      yaxis_title='', legend_title_text='Scaler terpilih',
-                      margin=dict(l=10, r=40, t=60, b=10))
-    return fig
+                 text=[f'{v:.1f}%' for v in stats['Persen']],
+                 title='Outlier IQR menentukan scaler tiap fitur')
+    fig.update_traces(textposition='outside', cliponaxis=False,
+                      textfont_size=11)
+    fig.add_vline(x=OUTLIER_THRESHOLD, line_dash='dot', line_color='#7f8c8d',
+                  annotation_text='ambang 5%',
+                  annotation_position='bottom right', annotation_font_size=10)
+    fig.update_layout(
+        height=470, xaxis_title='% baris di luar pagar IQR',
+        yaxis_title='', legend_title_text='',
+        legend=dict(orientation='h', yanchor='bottom', y=1.02,
+                    xanchor='left', x=0),
+        margin=dict(l=10, r=20, t=90, b=40))
+    return _bar_room(fig, stats['Persen'])
 
 
 # Ambang binning domain-tetap (dipakai Phase 3 / Apriori) + alasannya.
@@ -490,6 +524,18 @@ SECTION_STYLE = {'background': 'white', 'borderRadius': '12px',
                  'margin': '16px 20px', 'padding': '8px 4px 18px'}
 
 
+def pp_chip(value, label):
+    """Chip ringkas untuk angka kunci Phase 1 — supaya bagian preprocessing
+    bisa dipindai sekilas tanpa harus membaca paragraf lengkapnya."""
+    return html.Div([
+        html.Div(value, style={'fontSize': '19px', 'fontWeight': '700',
+                               'color': '#1f3a5f', 'lineHeight': '1.2'}),
+        html.Div(label, style={'fontSize': '11.5px', 'color': '#666'}),
+    ], style={'background': '#f7f9fb', 'border': '1px solid #e4e9ef',
+              'borderRadius': '8px', 'padding': '8px 12px', 'flex': '1',
+              'minWidth': '135px'})
+
+
 def _section_header(num, title, subtitle):
     """Header satu section pada dashboard single-page (nomor, judul, subjudul)."""
     return html.Div([
@@ -531,8 +577,11 @@ def build_app():
 
     # Figur statis (tidak bergantung input) dibangun sekali.
     fig_feat = fig_feature_selection()
-    fig_skew = fig_raw_vs_ratio_skew(df)
-    fig_scaler = fig_prescaling_scaler_choice(df)
+    # Statistik preprocessing dihitung SEKALI lalu dipakai dua figur sekaligus.
+    pp_stats = _preprocessing_stats(df)
+    fig_skew = fig_raw_vs_ratio_skew(pp_stats)
+    fig_scaler = fig_prescaling_scaler_choice(pp_stats)
+    n_robust = int((pp_stats['Scaler'] == 'RobustScaler').sum())
     fig_anom_break = fig_anomaly_breakdown(df)
     fig_anom_seg = fig_anomaly_by_segment(df)
 
@@ -560,48 +609,60 @@ def build_app():
                             'Seperti apa datasetnya dan apa saja yang '
                             'dikerjakan sebelum data layak ditambang'),
             html.Div([
-                html.P([html.Strong('Dataset. '),
-                        'Comprehensive Banking Database berisi 5.000 nasabah '
-                        'dengan 40 kolom, mencakup profil demografis, saldo dan '
-                        'transaksi, pinjaman, kartu kredit, sampai umpan balik '
-                        'layanan. Datanya sudah bersih sejak awal, tidak ada '
-                        'nilai kosong dan tidak ada baris duplikat, sehingga '
-                        'pekerjaan berat justru ada di validasi dan rekayasa '
-                        'fitur, bukan pembersihan.']),
-                html.P([html.Strong('Validasi domain. '),
-                        'Sebanyak 1.703 baris terlihat tidak konsisten antara '
-                        'saldo akhir dan jenis transaksi, tetapi setelah diadu '
-                        'dengan label anomali bawaan proporsinya sama saja '
-                        'dengan baris yang konsisten, jadi baris tersebut tidak '
-                        'dibuang. Umur seluruhnya wajar di rentang 18 sampai 69 '
-                        'tahun dan suku bunga seluruhnya di rentang 1 sampai 10 '
-                        'persen. Ada 855 nasabah dengan saldo kartu melebihi '
-                        'limit, ini dipertahankan karena justru menjadi sinyal '
-                        'tekanan kredit yang diselidiki di Phase 4.']),
-                html.P([html.Strong('Rekayasa fitur. '),
-                        'Delapan kolom tanggal diringkas menjadi dua fitur '
-                        'temporal, lalu dibuat tiga rasio perilaku yaitu '
-                        'utilisasi kartu, transaksi terhadap saldo, dan '
-                        'pinjaman terhadap saldo. Sepuluh kolom identitas dan '
-                        'kunci buatan dibuang karena berisiko privasi dan tanpa '
-                        'makna, ditambah delapan kolom tanggal mentah yang '
-                        'sudah terwakili fitur temporal, total 18 kolom '
-                        'dilepas.']),
-                html.P([html.Strong('Kenapa rasio, bukan angka mentah? '),
-                        'Grafik pertama di bawah menjawabnya. Hampir semua '
-                        'fitur mentah nyaris uniform dengan skewness mendekati '
-                        'nol, artinya tidak ada gumpalan alami yang bisa '
-                        'dijadikan cluster. Begitu dua fitur uniform dibagi, '
-                        'hasilnya berekor panjang dan berstruktur, dan di '
-                        'situlah segmen nasabah baru terlihat.']),
+                pp_chip('5.000 × 40', 'baris dan kolom mentah'),
+                pp_chip('0', 'nilai kosong dan duplikat'),
+                pp_chip('18', 'kolom dilepas (PII, kunci, tanggal)'),
+                pp_chip('5', 'fitur baru (2 temporal, 3 rasio)'),
+                pp_chip('6', 'fitur didiskretisasi untuk Apriori'),
+                pp_chip(f'{n_robust}', 'fitur perlu RobustScaler'),
+            ], style={'display': 'flex', 'gap': '10px', 'flexWrap': 'wrap',
+                      'padding': '10px 24px 4px'}),
+            html.Div([
+                html.P([html.Strong('Datanya sudah bersih, jadi pekerjaan '
+                                    'beratnya ada di tempat lain. '),
+                        'Tidak ada nilai kosong dan tidak ada duplikat, '
+                        'sehingga fokus Phase 1 bergeser ke validasi aturan '
+                        'bisnis dan rekayasa fitur.']),
+                html.P([html.Strong('Tiga keputusan validasi, semuanya '
+                                    'mempertahankan data. '),
+                        'Ada 1.703 baris yang saldo akhirnya tidak cocok '
+                        'dengan jenis transaksi, tetapi proporsi anomalinya '
+                        'sama saja dengan baris yang konsisten (5,7 persen '
+                        'lawan 6,2 persen), jadi bukan penanda apa pun dan '
+                        'tidak dibuang. Ada 855 nasabah dengan saldo kartu '
+                        'melewati limit, dipertahankan karena justru menjadi '
+                        'sinyal tekanan kredit di Phase 4. Umur 18 sampai 69 '
+                        'tahun dan bunga 1 sampai 10 persen, seluruhnya wajar.']),
+                html.P([html.Strong('Kenapa clustering memakai rasio, bukan '
+                                    'angka aslinya? '),
+                        'Grafik kiri menjawabnya. Seluruh fitur mentah punya '
+                        'skewness di bawah 0,05, artinya distribusinya rata '
+                        'dan tidak ada gumpalan yang bisa dijadikan cluster. '
+                        'Begitu dua fitur rata itu dibagi, misalnya saldo '
+                        'kartu dibagi limit, hasilnya berekor panjang dan di '
+                        'situlah segmen nasabah muncul. Grafik kanan memakai '
+                        'urutan baris yang sama: fitur yang miring di kiri '
+                        'persis fitur yang ber-outlier di kanan, dan itulah '
+                        'yang menentukan scaler mana yang dipakai. Outlier '
+                        'sendiri tidak dibuang karena bisa jadi temuan nyata '
+                        'yang diselidiki di Phase 4.']),
             ], style={'padding': '4px 24px 6px', 'color': '#333',
                       'fontSize': '14px', 'lineHeight': '1.65',
                       'textAlign': 'justify'}),
             html.Div([
-                dcc.Graph(id='pp-skew', figure=fig_skew, style={'flex': '1'}),
-                dcc.Graph(id='pp-scaler', figure=fig_scaler, style={'flex': '1'}),
+                dcc.Graph(id='pp-skew', figure=fig_skew,
+                          style={'flex': '1', 'minWidth': '420px'}),
+                dcc.Graph(id='pp-scaler', figure=fig_scaler,
+                          style={'flex': '1', 'minWidth': '420px'}),
             ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px',
                       'flexWrap': 'wrap'}),
+            html.Div('Kedua grafik memakai urutan fitur yang sama, jadi bisa '
+                     'dibaca berdampingan baris per baris. Sepuluh fitur mentah '
+                     'di bagian bawah tidak punya satu pun outlier IQR, batang '
+                     'nol persennya memang tidak terlihat, dan semuanya cukup '
+                     'memakai MinMaxScaler.',
+                     style={'padding': '0 24px 4px', 'color': '#666',
+                            'fontSize': '12.5px', 'fontStyle': 'italic'}),
             html.Div([
                 html.P([html.Strong('Diskretisasi untuk Association Rules. '),
                         'Enam fitur kontinu diubah menjadi kategori memakai '
