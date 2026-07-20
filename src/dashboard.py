@@ -481,15 +481,14 @@ def fig_anomaly_by_segment(df):
 # ════════════════════════════════════════════════════════════
 def kpi_card(title, value, sub, color):
     """Kartu KPI kecil (judul, angka besar berwarna, subjudul) untuk baris
-    ringkasan di atas dashboard."""
+    ringkasan di atas dashboard. Ukuran & pembungkusannya diatur class
+    .kpi-card di assets/dashboard.css agar bisa jadi dua kolom di layar kecil."""
     return html.Div([
         html.Div(title, style={'fontSize': '13px', 'color': '#555'}),
-        html.Div(value, style={'fontSize': '30px', 'fontWeight': '700',
-                               'color': color}),
+        html.Div(value, className='kpi-value',
+                 style={'fontSize': '30px', 'fontWeight': '700', 'color': color}),
         html.Div(sub, style={'fontSize': '11px', 'color': '#888'}),
-    ], style={'background': 'white', 'borderRadius': '10px', 'padding': '16px',
-              'boxShadow': '0 1px 4px rgba(0,0,0,0.08)', 'flex': '1',
-              'minWidth': '150px'})
+    ], className='kpi-card')
 
 
 # ════════════════════════════════════════════════════════════
@@ -519,9 +518,26 @@ _TD = {'padding': '6px 8px', 'borderBottom': '1px solid #eef1f5',
        'verticalAlign': 'top'}
 _TD_B = dict(_TD, fontWeight='600')
 
-SECTION_STYLE = {'background': 'white', 'borderRadius': '12px',
-                 'boxShadow': '0 1px 4px rgba(0,0,0,0.08)',
-                 'margin': '16px 20px', 'padding': '8px 4px 18px'}
+# Section dashboard: (anchor id, label navbar). Dipakai dua kali — untuk
+# membangun tautan navbar dan untuk memberi id pada tiap section.
+SECTIONS = [
+    ('sec-data', 'Data'),
+    ('sec-segmen', 'Segmentasi'),
+    ('sec-rules', 'Rules'),
+    ('sec-anomali', 'Anomali'),
+    ('sec-kredit', 'Kredit'),
+]
+
+
+def navbar():
+    """Navbar tipis yang menempel di atas layar berisi tautan lompat ke tiap
+    section. Di layar sempit daftar tautannya digeser horizontal (diatur di
+    assets/dashboard.css) sehingga tetap lengkap tanpa memakan tinggi."""
+    return html.Div([
+        html.Span('🏦 Banking KDD', className='navbar-brand'),
+        html.Nav([html.A(label, href=f'#{sid}') for sid, label in SECTIONS],
+                 className='navbar-links'),
+    ], className='navbar')
 
 
 def pp_chip(value, label):
@@ -531,9 +547,7 @@ def pp_chip(value, label):
         html.Div(value, style={'fontSize': '19px', 'fontWeight': '700',
                                'color': '#1f3a5f', 'lineHeight': '1.2'}),
         html.Div(label, style={'fontSize': '11.5px', 'color': '#666'}),
-    ], style={'background': '#f7f9fb', 'border': '1px solid #e4e9ef',
-              'borderRadius': '8px', 'padding': '8px 12px', 'flex': '1',
-              'minWidth': '135px'})
+    ], className='chip')
 
 
 def _section_header(num, title, subtitle):
@@ -542,8 +556,7 @@ def _section_header(num, title, subtitle):
         html.H3(f'{num} · {title}', style={'margin': '0', 'color': '#1f3a5f'}),
         html.Div(subtitle, style={'color': '#666', 'fontSize': '13px',
                                   'marginTop': '2px'}),
-    ], style={'padding': '14px 20px 6px', 'borderBottom': '2px solid #eef1f5',
-              'marginBottom': '8px'})
+    ], className='section-header')
 
 
 def build_app():
@@ -553,7 +566,11 @@ def build_app():
     (agar slider ringan), susun layout, daftarkan callback. Dipisah dari
     run_dashboard agar bisa di-smoke-test tanpa menyalakan server."""
     df, rules = load_dashboard_data()
-    app = Dash(__name__)
+    # assets_folder eksplisit: CSS tata letak & media query ada di
+    # assets/dashboard.css pada root project, bukan di sebelah src/.
+    app = Dash(__name__, assets_folder=os.path.join(BASE_DIR, 'assets'),
+               meta_tags=[{'name': 'viewport',
+                           'content': 'width=device-width, initial-scale=1'}])
     app.title = 'Banking KDD Dashboard'
 
     n_total = len(df)
@@ -586,12 +603,7 @@ def build_app():
     fig_anom_seg = fig_anomaly_by_segment(df)
 
     app.layout = html.Div([
-        html.Div([
-            html.H2('🏦 Banking Transaction — Knowledge Discovery Dashboard',
-                    style={'margin': '0'})
-        ], style={'padding': '14px 20px', 'background': '#1f3a5f',
-                  'color': 'white', 'position': 'sticky', 'top': '0',
-                  'zIndex': '100'}),
+        navbar(),
 
         # KPI row
         html.Div([
@@ -600,11 +612,10 @@ def build_app():
             kpi_card('Association Rules', f'{n_rules}', 'non-trivial (lift ≥ 1.4)', '#e67e22'),
             kpi_card('Anomali Konsensus', f'{n_anom}', '≥2 metode setuju', '#9b59b6'),
             kpi_card('Risk Signal', f'{n_risk}', 'perlu eskalasi', '#e74c3c'),
-        ], style={'display': 'flex', 'gap': '12px', 'padding': '16px 20px',
-                  'flexWrap': 'wrap', 'background': '#eef1f5'}),
+        ], className='kpi-row'),
 
         # ── SECTION 1: DATA & PREPROCESSING ──
-        html.Div([
+        html.Div(id='sec-data', className='section', children=[
             _section_header('1', 'Data & Preprocessing',
                             'Seperti apa datasetnya dan apa saja yang '
                             'dikerjakan sebelum data layak ditambang'),
@@ -615,8 +626,7 @@ def build_app():
                 pp_chip('5', 'fitur baru (2 temporal, 3 rasio)'),
                 pp_chip('6', 'fitur didiskretisasi untuk Apriori'),
                 pp_chip(f'{n_robust}', 'fitur perlu RobustScaler'),
-            ], style={'display': 'flex', 'gap': '10px', 'flexWrap': 'wrap',
-                      'padding': '10px 24px 4px'}),
+            ], className='chip-row'),
             html.Div([
                 html.P([html.Strong('Datanya sudah bersih, jadi pekerjaan '
                                     'beratnya ada di tempat lain. '),
@@ -646,23 +656,18 @@ def build_app():
                         'yang menentukan scaler mana yang dipakai. Outlier '
                         'sendiri tidak dibuang karena bisa jadi temuan nyata '
                         'yang diselidiki di Phase 4.']),
-            ], style={'padding': '4px 24px 6px', 'color': '#333',
-                      'fontSize': '14px', 'lineHeight': '1.65',
-                      'textAlign': 'justify'}),
+            ], className='prose'),
             html.Div([
                 dcc.Graph(id='pp-skew', figure=fig_skew,
-                          style={'flex': '1', 'minWidth': '420px'}),
+                          className='chart-half', responsive=True),
                 dcc.Graph(id='pp-scaler', figure=fig_scaler,
-                          style={'flex': '1', 'minWidth': '420px'}),
-            ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px',
-                      'flexWrap': 'wrap'}),
+                          className='chart-half', responsive=True),
+            ], className='chart-row'),
             html.Div('Kedua grafik memakai urutan fitur yang sama, jadi bisa '
                      'dibaca berdampingan baris per baris. Sepuluh fitur mentah '
                      'di bagian bawah tidak punya satu pun outlier IQR, batang '
                      'nol persennya memang tidak terlihat, dan semuanya cukup '
-                     'memakai MinMaxScaler.',
-                     style={'padding': '0 24px 4px', 'color': '#666',
-                            'fontSize': '12.5px', 'fontStyle': 'italic'}),
+                     'memakai MinMaxScaler.', className='note'),
             html.Div([
                 html.P([html.Strong('Diskretisasi untuk Association Rules. '),
                         'Enam fitur kontinu diubah menjadi kategori memakai '
@@ -676,14 +681,13 @@ def build_app():
                     [html.Tr([html.Td(k, style=_TD_B), html.Td(v, style=_TD),
                               html.Td(w, style=_TD)])
                      for k, v, w in BINNING_ROWS],
-                    style={'width': '100%', 'borderCollapse': 'collapse',
-                           'fontSize': '12.5px'}),
-            ], style={'padding': '10px 24px 4px', 'color': '#333',
-                      'fontSize': '14px', 'lineHeight': '1.6'}),
-        ], style=SECTION_STYLE),
+                    style={'fontSize': '12.5px'}),
+            ], className='table-wrap',
+               style={'color': '#333', 'fontSize': '14px', 'lineHeight': '1.6'}),
+        ]),
 
         # ── SECTION 2: SEGMENTASI ──
-        html.Div([
+        html.Div(id='sec-segmen', className='section', children=[
             _section_header('2', 'Segmentasi Nasabah',
                             'Peta segmen, proporsi, profil rasio, dan komposisi '
                             'demografis per segmen'),
@@ -695,34 +699,33 @@ def build_app():
                         options=[{'label': v, 'value': k}
                                  for k, v in METHOD_LABEL.items()],
                         value='KMeans_Segment', clearable=False),
-                ], style={'flex': '1'}),
+                ]),
                 html.Div([
                     html.Label('Sumbu X'),
                     dcc.Dropdown(id='seg-x',
                                  options=[{'label': RATIO_LABEL[r], 'value': r}
                                           for r in RATIOS],
                                  value=RATIOS[1], clearable=False),
-                ], style={'flex': '1'}),
+                ]),
                 html.Div([
                     html.Label('Sumbu Y'),
                     dcc.Dropdown(id='seg-y',
                                  options=[{'label': RATIO_LABEL[r], 'value': r}
                                           for r in RATIOS],
                                  value=RATIOS[2], clearable=False),
-                ], style={'flex': '1'}),
-            ], style={'display': 'flex', 'gap': '12px', 'padding': '10px 20px'}),
+                ]),
+            ], className='control-row'),
             html.Div('Sumbu X dan Y hanya mengubah peta segmen di kiri. Donut '
                      'proporsi, profil rasio, dan komposisi demografis '
                      'mengikuti pilihan METODE, karena keanggotaan segmen tiap '
                      'nasabah tidak berubah hanya karena sudut pandangnya '
-                     'digeser.',
-                     style={'padding': '0 24px 6px', 'color': '#666',
-                            'fontSize': '12.5px', 'fontStyle': 'italic'}),
+                     'digeser.', className='note'),
             html.Div([
-                dcc.Graph(id='cluster-map', style={'flex': '3'}),
-                dcc.Graph(id='segment-pie', style={'flex': '2'}),
-            ], style={'display': 'flex', 'gap': '8px', 'padding': '0 16px'}),
-            dcc.Graph(id='segment-profile', style={'padding': '0 16px'}),
+                dcc.Graph(id='cluster-map', className='chart-3', responsive=True),
+                dcc.Graph(id='segment-pie', className='chart-2', responsive=True),
+            ], className='chart-row'),
+            dcc.Graph(id='segment-profile', className='chart-full',
+                      responsive=True),
             html.Div([
                 html.Label('Fitur demografis untuk profil segmen'),
                 dcc.Dropdown(
@@ -731,20 +734,19 @@ def build_app():
                              for c in DEMOGRAPHICS if c in df.columns],
                     value=next((c for c in DEMOGRAPHICS if c in df.columns), None),
                     clearable=False),
-            ], style={'padding': '8px 20px'}),
-            dcc.Graph(id='segment-demographics', style={'padding': '0 16px'}),
+            ], className='control-row'),
+            dcc.Graph(id='segment-demographics', className='chart-full',
+                      responsive=True),
             html.Div('Kenapa 3 rasio ini dipakai? Pencarian otomatis atas SEMUA '
                      'kombinasi 3-fitur memilih ketiga rasio yang sama (peringkat #1), '
                      'jauh mengungguli fitur mentah & PCA — pilihan domain tervalidasi '
-                     'secara data-driven.',
-                     style={'padding': '12px 24px 0', 'color': '#555',
-                            'fontSize': '13px'}),
+                     'secara data-driven.', className='note'),
             dcc.Graph(id='feature-selection', figure=fig_feat,
-                      style={'padding': '0 16px 6px'}),
-        ], style=SECTION_STYLE),
+                      className='chart-full', responsive=True),
+        ]),
 
         # ── SECTION 3: ASSOCIATION RULES ──
-        html.Div([
+        html.Div(id='sec-rules', className='section', children=[
             _section_header('3', 'Association Rules',
                             'Jaringan relasi BERARAH (panah IF → THEN), sebaran '
                             'support–confidence, dan tabel rule'),
@@ -756,43 +758,41 @@ def build_app():
                            marks={slider_min: f'{slider_min:.2f}',
                                   slider_max: f'{slider_max:.2f}'},
                            tooltip={'placement': 'bottom', 'always_visible': True}),
-            ], style={'padding': '14px 24px'}),
-            dcc.Graph(id='rule-network', style={'padding': '0 16px'}),
-            dcc.Graph(id='rule-scatter', style={'padding': '0 16px'}),
-            html.Div(id='rule-table', style={'padding': '12px 20px'}),
-        ], style=SECTION_STYLE),
+            ], className='control-row'),
+            dcc.Graph(id='rule-network', className='chart-full', responsive=True),
+            dcc.Graph(id='rule-scatter', className='chart-full', responsive=True),
+            html.Div(id='rule-table', className='table-wrap'),
+        ]),
 
         # ── SECTION 4: ANOMALI ──
-        html.Div([
+        html.Div(id='sec-anomali', className='section', children=[
             _section_header('4', 'Anomaly Detection',
                             'Klasifikasi anomali, konsentrasi risiko per segmen, '
                             'dan sebarannya di ruang rasio perilaku'),
             html.Div([
-                dcc.Graph(id='anom-breakdown', style={'flex': '1'},
-                          figure=fig_anom_break),
-                dcc.Graph(id='anom-by-seg', style={'flex': '1'},
-                          figure=fig_anom_seg),
-            ], style={'display': 'flex', 'gap': '8px', 'padding': '12px 16px'}),
+                dcc.Graph(id='anom-breakdown', className='chart-half',
+                          figure=fig_anom_break, responsive=True),
+                dcc.Graph(id='anom-by-seg', className='chart-half',
+                          figure=fig_anom_seg, responsive=True),
+            ], className='chart-row'),
             html.Div([
                 html.Label('Sumbu X / Y anomaly scatter'),
                 html.Div([
                     dcc.Dropdown(id='anom-x',
                                  options=[{'label': RATIO_LABEL[r], 'value': r}
                                           for r in RATIOS],
-                                 value=RATIOS[1], clearable=False,
-                                 style={'flex': '1'}),
+                                 value=RATIOS[1], clearable=False),
                     dcc.Dropdown(id='anom-y',
                                  options=[{'label': RATIO_LABEL[r], 'value': r}
                                           for r in RATIOS],
-                                 value=RATIOS[2], clearable=False,
-                                 style={'flex': '1'}),
-                ], style={'display': 'flex', 'gap': '12px'}),
-            ], style={'padding': '8px 20px'}),
-            dcc.Graph(id='anom-scatter', style={'padding': '0 16px'}),
-        ], style=SECTION_STYLE),
+                                 value=RATIOS[2], clearable=False),
+                ], className='control-row', style={'padding': '0'}),
+            ], className='control-row'),
+            dcc.Graph(id='anom-scatter', className='chart-full', responsive=True),
+        ]),
 
         # ── SECTION 5: KREDIT ──
-        html.Div([
+        html.Div(id='sec-kredit', className='section', children=[
             _section_header('5', 'Kredit',
                             'Sumber data dan tim penyusun'),
             html.Div([
@@ -818,11 +818,10 @@ def build_app():
                                       style=_TD),
                               html.Td(role, style=_TD)])
                      for nama, nim, email, role in TEAM],
-                    style={'width': '100%', 'borderCollapse': 'collapse',
-                           'fontSize': '13px', 'marginTop': '4px'}),
-            ], style={'padding': '4px 24px 16px', 'color': '#333',
-                      'fontSize': '14px', 'lineHeight': '1.6'}),
-        ], style=SECTION_STYLE),
+                    style={'fontSize': '13px', 'marginTop': '4px'}),
+            ], className='table-wrap',
+               style={'color': '#333', 'fontSize': '14px', 'lineHeight': '1.6'}),
+        ]),
 
         html.Div('Banking Transaction · Knowledge Discovery · Python Dash',
                  style={'textAlign': 'center', 'color': '#999',

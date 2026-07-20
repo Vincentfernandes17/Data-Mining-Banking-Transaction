@@ -1,0 +1,109 @@
+/* dashboard.css — tata letak & responsivitas dashboard Phase 5.
+ *
+ * Kenapa di file terpisah, bukan style inline di dashboard.py?
+ * Media query TIDAK BISA ditulis sebagai style inline React, sedangkan style
+ * inline juga selalu mengalahkan aturan CSS biasa. Jadi semua properti tata
+ * letak yang harus berubah di layar kecil (arah flex, lebar, padding) dipindah
+ * ke class di sini, dan dashboard.py cukup memasang className.
+ */
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; }
+
+/* Hormati pengguna yang mematikan animasi di sistemnya — lompatan antar
+   section jadi langsung, bukan bergulir. */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+}
+
+/* ══ Navbar tipis ══════════════════════════════════════════════
+   Tinggi 46px saja supaya tidak memakan ruang grafik, tetapi tetap sticky
+   agar tim bisa lompat antar section kapan pun tanpa scroll manual. */
+.navbar {
+  position: sticky; top: 0; z-index: 200;
+  display: flex; align-items: center; gap: 14px;
+  height: 46px; padding: 0 16px;
+  background: #1f3a5f; color: #fff;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, .25);
+}
+.navbar-brand { font-weight: 700; font-size: 14px; white-space: nowrap; }
+/* Di layar sempit daftar link digeser horizontal, bukan dipotong atau dibuat
+   menumpuk — scrollbar-nya disembunyikan agar tetap terlihat rapi. */
+.navbar-links { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; }
+.navbar-links::-webkit-scrollbar { display: none; }
+.navbar-links a {
+  color: #cfd9e6; text-decoration: none; font-size: 12.5px;
+  padding: 5px 9px; border-radius: 6px; white-space: nowrap;
+  transition: background .15s, color .15s;
+}
+.navbar-links a:hover { background: rgba(255, 255, 255, .14); color: #fff; }
+
+/* ══ Section ══════════════════════════════════════════════════
+   scroll-margin-top mencegah judul section tertutup navbar sticky
+   ketika dilompati lewat tautan anchor. */
+.section {
+  background: #fff; border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+  margin: 16px 20px; padding: 8px 4px 18px;
+  scroll-margin-top: 58px;
+}
+.section-header { padding: 14px 20px 6px; border-bottom: 2px solid #eef1f5; margin-bottom: 8px; }
+.prose { padding: 4px 24px 6px; color: #333; font-size: 14px; line-height: 1.65; text-align: justify; }
+.note { padding: 0 24px 6px; color: #666; font-size: 12.5px; font-style: italic; }
+
+/* ══ Baris fleksibel ══════════════════════════════════════════
+   min-width:0 wajib pada anak flex, kalau tidak grafik Plotly menolak
+   menyusut dan malah memaksa halaman melebar (horizontal scroll). */
+.kpi-row { display: flex; gap: 12px; padding: 16px 20px; flex-wrap: wrap; background: #eef1f5; }
+.kpi-card {
+  background: #fff; border-radius: 10px; padding: 16px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+  flex: 1 1 150px; min-width: 0;
+}
+.chip-row { display: flex; gap: 10px; flex-wrap: wrap; padding: 10px 24px 4px; }
+.chip { background: #f7f9fb; border: 1px solid #e4e9ef; border-radius: 8px; padding: 8px 12px; flex: 1 1 135px; min-width: 0; }
+
+.chart-row { display: flex; gap: 8px; padding: 0 16px; flex-wrap: wrap; }
+.chart-row > * { min-width: 0; }
+.chart-3 { flex: 3 1 380px; }
+.chart-2 { flex: 2 1 300px; }
+.chart-half { flex: 1 1 420px; }
+.chart-full { padding: 0 16px; }
+
+.control-row { display: flex; gap: 12px; padding: 10px 20px; flex-wrap: wrap; }
+.control-row > * { flex: 1 1 200px; min-width: 0; }
+
+/* Tabel lebar digeser di dalam kotaknya sendiri, jangan sampai badan
+   halaman ikut bisa digeser ke samping. */
+.table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; padding: 10px 24px 4px; }
+.table-wrap table { width: 100%; border-collapse: collapse; min-width: 520px; }
+
+/* ══ Layar kecil ══════════════════════════════════════════════ */
+@media (max-width: 760px) {
+  .navbar { height: 44px; padding: 0 10px; gap: 8px; }
+  .navbar-brand { font-size: 13px; }
+  .navbar-links a { font-size: 12px; padding: 5px 7px; }
+
+  .section { margin: 10px 8px; padding: 6px 2px 14px; scroll-margin-top: 52px; }
+  .section-header { padding: 12px 14px 6px; }
+  .section-header h3 { font-size: 16px; }
+
+  /* Dua kartu KPI per baris jauh lebih terbaca daripada lima yang gepeng. */
+  .kpi-row { padding: 10px 8px; gap: 8px; }
+  .kpi-card { flex: 1 1 calc(50% - 8px); padding: 10px; }
+  .kpi-card .kpi-value { font-size: 22px; }
+
+  .prose { padding: 4px 14px 6px; font-size: 13.5px; text-align: left; }
+  .note { padding: 0 14px 6px; }
+  .chip-row { padding: 10px 14px 4px; gap: 8px; }
+  .chip { flex: 1 1 calc(50% - 8px); }
+  .control-row { padding: 10px 14px; }
+  .control-row > * { flex: 1 1 100%; }
+
+  /* Grafik berdampingan ditumpuk ke bawah supaya tidak gepeng. */
+  .chart-row { padding: 0 6px; gap: 4px; }
+  .chart-3, .chart-2, .chart-half { flex: 1 1 100%; }
+  .chart-full { padding: 0 6px; }
+  .table-wrap { padding: 10px 14px 4px; }
+}
