@@ -606,6 +606,25 @@ def _section_header(num, title, subtitle):
     ], className='section-header')
 
 
+# Tinggi eksplisit tiap grafik (px). WAJIB: tanpa ini, responsive=True
+# kadang membuat wrapper Plotly kolaps ke tinggi 0 sementara SVG di dalamnya
+# tetap ~450px, sehingga grafik tumpah menimpa tabel/scatter di bawahnya.
+GRAPH_H = {
+    'pp-skew': {'height': '470px'},
+    'pp-scaler': {'height': '470px'},
+    'cluster-map': {'height': '480px'},
+    'segment-pie': {'height': '480px'},
+    'segment-profile': {'height': '420px'},
+    'segment-demographics': {'height': '430px'},
+    'feature-selection': {'height': '400px'},
+    'rule-network': {'height': '600px'},
+    'rule-scatter': {'height': '420px'},
+    'anom-breakdown': {'height': '420px'},
+    'anom-by-seg': {'height': '440px'},
+    'anom-scatter': {'height': '480px'},
+}
+
+
 def build_app():
     """Rakit aplikasi Dash SINGLE-PAGE (tanpa tab, semua section tersusun
     vertikal supaya tim bisa memindai seluruh temuan cepat tanpa klik).
@@ -705,10 +724,10 @@ def build_app():
                         'yang diselidiki di Phase 4.']),
             ], className='prose'),
             html.Div([
-                dcc.Graph(id='pp-skew', figure=fig_skew,
-                          className='chart-half', responsive=True),
-                dcc.Graph(id='pp-scaler', figure=fig_scaler,
-                          className='chart-half', responsive=True),
+                dcc.Graph(id='pp-skew', figure=fig_skew, className='chart-half',
+                          responsive=True, style=GRAPH_H['pp-skew']),
+                dcc.Graph(id='pp-scaler', figure=fig_scaler, className='chart-half',
+                          responsive=True, style=GRAPH_H['pp-scaler']),
             ], className='chart-row'),
             html.Div('Kedua grafik memakai urutan fitur yang sama, jadi bisa '
                      'dibaca berdampingan baris per baris. Titik yang menempel '
@@ -770,11 +789,13 @@ def build_app():
                      'nasabah tidak berubah hanya karena sudut pandangnya '
                      'digeser.', className='note'),
             html.Div([
-                dcc.Graph(id='cluster-map', className='chart-3', responsive=True),
-                dcc.Graph(id='segment-pie', className='chart-2', responsive=True),
+                dcc.Graph(id='cluster-map', className='chart-3', responsive=True,
+                          style=GRAPH_H['cluster-map']),
+                dcc.Graph(id='segment-pie', className='chart-2', responsive=True,
+                          style=GRAPH_H['segment-pie']),
             ], className='chart-row'),
             dcc.Graph(id='segment-profile', className='chart-full',
-                      responsive=True),
+                      responsive=True, style=GRAPH_H['segment-profile']),
             html.Div([
                 html.Label('Fitur demografis untuk profil segmen'),
                 dcc.Dropdown(
@@ -785,13 +806,13 @@ def build_app():
                     clearable=False),
             ], className='control-row'),
             dcc.Graph(id='segment-demographics', className='chart-full',
-                      responsive=True),
+                      responsive=True, style=GRAPH_H['segment-demographics']),
             html.Div('Kenapa 3 rasio ini dipakai? Pencarian otomatis atas SEMUA '
                      'kombinasi 3-fitur memilih ketiga rasio yang sama (peringkat #1), '
                      'jauh mengungguli fitur mentah & PCA — pilihan domain tervalidasi '
                      'secara data-driven.', className='note'),
-            dcc.Graph(id='feature-selection', figure=fig_feat,
-                      className='chart-full', responsive=True),
+            dcc.Graph(id='feature-selection', figure=fig_feat, className='chart-full',
+                      responsive=True, style=GRAPH_H['feature-selection']),
         ]),
 
         # ── SECTION 3: ASSOCIATION RULES ──
@@ -808,8 +829,10 @@ def build_app():
                                   slider_max: f'{slider_max:.2f}'},
                            tooltip={'placement': 'bottom', 'always_visible': True}),
             ], className='control-row'),
-            dcc.Graph(id='rule-network', className='chart-full', responsive=True),
-            dcc.Graph(id='rule-scatter', className='chart-full', responsive=True),
+            dcc.Graph(id='rule-network', className='chart-full', responsive=True,
+                      style=GRAPH_H['rule-network']),
+            dcc.Graph(id='rule-scatter', className='chart-full', responsive=True,
+                      style=GRAPH_H['rule-scatter']),
             html.Div(id='rule-table', className='table-wrap'),
         ]),
 
@@ -819,10 +842,10 @@ def build_app():
                             'Klasifikasi anomali, konsentrasi risiko per segmen, '
                             'dan sebarannya di ruang rasio perilaku'),
             html.Div([
-                dcc.Graph(id='anom-breakdown', className='chart-half',
-                          figure=fig_anom_break, responsive=True),
-                dcc.Graph(id='anom-by-seg', className='chart-half',
-                          figure=fig_anom_seg, responsive=True),
+                dcc.Graph(id='anom-breakdown', className='chart-half', figure=fig_anom_break,
+                          responsive=True, style=GRAPH_H['anom-breakdown']),
+                dcc.Graph(id='anom-by-seg', className='chart-half', figure=fig_anom_seg,
+                          responsive=True, style=GRAPH_H['anom-by-seg']),
             ], className='chart-row'),
             html.Div([
                 html.Label('Sumbu X / Y anomaly scatter'),
@@ -837,7 +860,8 @@ def build_app():
                                  value=RATIOS[2], clearable=False),
                 ], className='control-row', style={'padding': '0'}),
             ], className='control-row'),
-            dcc.Graph(id='anom-scatter', className='chart-full', responsive=True),
+            dcc.Graph(id='anom-scatter', className='chart-full', responsive=True,
+                      style=GRAPH_H['anom-scatter']),
         ]),
 
         # ── SECTION 5: KREDIT ──
