@@ -468,9 +468,12 @@ def fig_rule_scatter(rules, min_lift):
         return go.Figure().update_layout(title='Tidak ada rules')
     sub = rules[rules['Lift'] >= min_lift].copy()
     sub['Rule'] = sub['Antecedent (IF)'] + '  →  ' + sub['Consequent (THEN)']
+    # SVG, BUKAN WebGL. Rule paling banyak 82 titik sehingga SVG lebih dari
+    # cukup dan justru menggambar ulang dengan benar saat halaman digeser.
+    # Kanvas WebGL sempat kali tidak me-repaint pada scroll, meninggalkan
+    # "bayangan" grafik lama yang tampak menimpa tabel di bawahnya.
     fig = px.scatter(sub, x='Support', y='Confidence', size='Lift', color='Lift',
                      color_continuous_scale='YlOrRd', hover_name='Rule',
-                     render_mode='webgl',
                      title='Support vs Confidence (ukuran & warna = Lift)')
     fig.update_layout(height=420, margin=dict(l=10, r=10, t=50, b=10))
     return fig
