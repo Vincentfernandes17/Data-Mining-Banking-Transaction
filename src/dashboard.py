@@ -451,13 +451,18 @@ def fig_rule_network(G, pos, min_lift, n_rules=None, max_arrows=140):
     asal = f'{n_rules} rule → ' if n_rules is not None else ''
     fig = go.Figure([node_trace])
     fig.update_layout(
-        title=f'Jaringan Association Rules BERARAH — Lift ≥ {min_lift:.2f}<br>'
-              f'<sub>{asal}{len(kept)} panah antar item{capped}. '
-              f'Panah menunjuk IF → THEN.</sub>',
+        # Judul 2 baris (judul + subjudul): butuh margin atas lebih lega, kalau
+        # tidak subjudulnya menempel ke area plot. y & pad memberi jarak dari
+        # tepi atas dan dari area gambar di bawahnya.
+        title=dict(
+            text=f'Jaringan Association Rules BERARAH — Lift ≥ {min_lift:.2f}<br>'
+                 f'<sub>{asal}{len(kept)} panah antar item{capped}. '
+                 f'Panah menunjuk IF → THEN.</sub>',
+            y=0.97, yanchor='top', pad=dict(b=16)),
         showlegend=False, height=600, annotations=annotations,
         xaxis=dict(visible=False, range=[min(xs) - padx, max(xs) + padx]),
         yaxis=dict(visible=False, range=[min(ys) - pady, max(ys) + pady]),
-        margin=dict(l=40, r=40, t=50, b=30))
+        margin=dict(l=40, r=40, t=96, b=30))
     return fig
 
 
